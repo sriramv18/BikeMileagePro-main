@@ -31,6 +31,7 @@ class RideTrackingService : Service(), LocationListener {
     private var previous: Location? = null
     private var distanceKm = 0.0
     private var maxSpeed = 0.0
+    private var startedAt = 0L
     private var started = false
 
     override fun onCreate() {
@@ -50,9 +51,9 @@ class RideTrackingService : Service(), LocationListener {
         return START_NOT_STICKY
     }
 
-    private fun makeNotification(message: String): Notification {
+    private fun notification(message: String): Notification {
         val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL_ID)
-                      else @Suppress("DEPRECATION") Notification.Builder(this)
+        else @Suppress("DEPRECATION") Notification.Builder(this)
         return builder.setContentTitle("Bike Mileage Pro")
             .setContentText(message)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
@@ -67,10 +68,11 @@ class RideTrackingService : Service(), LocationListener {
         distanceKm = 0.0
         maxSpeed = 0.0
         previous = null
+        startedAt = System.currentTimeMillis()
         started = true
-        startForeground(NOTIFICATION_ID, makeNotification("Ride tracking is active"))
+        startForeground(NOTIFICATION_ID, notification("Ride tracking is active"))
         try {
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 1f, this, Looper.getMainLooper())
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 2f, this, Looper.getMainLooper())
         } catch (_: SecurityException) {
             started = false
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -83,17 +85,20 @@ class RideTrackingService : Service(), LocationListener {
         val old = previous
         if (old != null && location.hasAccuracy() && location.accuracy <= 35f) {
             val segment = old.distanceTo(location)
-            if (segment in 1f..250f) distanceKm += segment / 1000.0
+            if (segment in 2f..250f) distanceKm += segment / 1000.0
         }
         previous = location
         val speed = if (location.hasSpeed()) location.speed * 3.6 else 0.0
         if (speed in 0.0..250.0 && speed > maxSpeed) maxSpeed = speed
+        val elapsed = ((System.currentTimeMillis() - startedAt) / 60000L).toInt()
         sendBroadcast(Intent(ACTION_UPDATE).setPackage(packageName).apply {
             putExtra("distance_km", distanceKm)
             putExtra("speed_kmh", speed)
+            putExtra("max_speed", maxSpeed)
+            putExtra("duration_minutes", elapsed)
         })
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
-            .notify(NOTIFICATION_ID, makeNotification(String.format(Locale.US, "Trip %.2f km", distanceKm)))
+            .notify(NOTIFICATION_ID, notification(String.format(Locale.US, "Trip %.2f km", distanceKm)))
     }
 
     private fun finishRide() {
@@ -102,7 +107,8 @@ class RideTrackingService : Service(), LocationListener {
             started = false
             if (distanceKm > 0.02) {
                 val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-                TripDatabase(this).use { it.saveTrip(date, distanceKm, maxSpeed) }
+                val minutes = ((System.currentTimeMillis() - startedAt) / 60000L).toInt()
+                TripDatabase(this).use { it.saveTrip(date, distanceKm, maxSpeed, minutes) }
             }
         }
         stopForeground(STOP_FOREGROUND_REMOVE)
