@@ -1,23 +1,21 @@
-# Bike Mileage Pro v0.3.0
+# Bike Mileage Pro v0.4.0 — Premium Compose UI
 
-Native Android app for motorcycle trip tracking, fuel logs and mileage calculation.
+Native Android app using Kotlin, Jetpack Compose and Material 3 with a premium dark navy + teal visual theme.
 
 ## Screens
-- Dashboard: overall full-tank mileage, total GPS trip distance, fuel spend and mileage chart.
-- Vehicle: editable vehicle profile and BLE device discovery.
-- Trips: foreground GPS trip start/stop, distance, speed, duration and trip history.
-- Fuel & Odometer: date, odometer, litres, amount and full/partial tank records.
+- Dashboard: overall full-tank km/L, total GPS trip distance, fuel spend, last odometer, mileage trend chart and live trip snapshot.
+- Vehicle: editable Honda H’ness CB350 DLX Pro profile and nearby BLE discovery.
+- Trips: foreground GPS tracking, live distance/speed/duration and saved trip history.
+- Fuel: fill-up date, odometer, litres, amount, full/partial tank and fill-up history.
 
-## Mileage method
-Mileage is calculated only between consecutive full-tank entries:
-(current full-tank odometer - previous full-tank odometer) / litres added at current fill.
-For best accuracy, fill to the same automatic pump cut-off each time. Partial fills are saved but excluded from mileage calculations.
+## Mileage calculation
+Mileage is calculated between consecutive full-tank entries using the odometer distance divided by litres added at the current full-tank refill. Keep the same pump and stop at the automatic cut-off for best consistency. Partial fills are stored but excluded as mileage intervals.
+
+## GPS
+Trip tracking uses phone GPS and a foreground location service. GPS distance/speed are estimates and can differ from the motorcycle odometer. Allow location permission and enable GPS.
 
 ## Bluetooth limitation
-The app currently discovers nearby BLE advertisements. It does not read Honda ECU values. Live ECU data needs a compatible diagnostic adapter, wiring/protocol confirmation for the exact motorcycle and an implemented adapter protocol.
+The app currently discovers nearby BLE advertisements only. It does not yet read Honda ECU values. Live ECU data requires a compatible diagnostic adapter, confirmed pinout/protocol for the exact motorcycle, and an implemented adapter protocol.
 
 ## Build
-GitHub Actions builds a debug APK on push to main/master or manual workflow dispatch. Download the `BikeMileagePro-v0.3.0-debug-apk` artifact from the successful workflow run.
-
-## Permissions
-Location is required for GPS trip tracking. Bluetooth and nearby-device permissions are used only for BLE discovery. Trip data is stored locally in SQLite.
+Push to main/master or manually run the GitHub Actions workflow. Download the `BikeMileagePro-v0.4.0-premium-debug-apk` artifact from a successful run.

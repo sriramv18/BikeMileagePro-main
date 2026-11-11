@@ -10,30 +10,73 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.graphics.Color
-import android.graphics.Typeface
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
-import android.text.InputType
-import android.view.Gravity
-import android.view.View
-import android.widget.*
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.DirectionsBike
+import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class MainActivity : Activity() {
+private val Ink = Color(0xFF08131F)
+private val Panel = Color(0xFF122334)
+private val Panel2 = Color(0xFF182D40)
+private val Teal = Color(0xFF36D6C3)
+private val Muted = Color(0xFF91A5B8)
+private val White = Color(0xFFF4F8FC)
+private val Orange = Color(0xFFFFB86B)
+private val Green = Color(0xFF64D6A2)
+
+class MainActivity : ComponentActivity() {
     private lateinit var db: TripDatabase
-    private lateinit var content: LinearLayout
-    private lateinit var nav: LinearLayout
-    private var selectedTab = 0
-    private var chartPeriod = "All"
-    private var liveDistance = 0.0
-    private var liveSpeed = 0.0
-    private var liveMinutes = 0
-    private var bluetoothStatus = "Not connected — scan only discovers nearby BLE devices"
+    private var liveDistance by mutableDoubleStateOf(0.0)
+    private var liveSpeed by mutableDoubleStateOf(0.0)
+    private var liveMinutes by mutableIntStateOf(0)
+    private var bluetoothStatus by mutableStateOf("Not scanned")
     private val prefs by lazy { getSharedPreferences("vehicle_profile", MODE_PRIVATE) }
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { }
 
     private val rideReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -41,7 +84,6 @@ class MainActivity : Activity() {
                 liveDistance = intent.getDoubleExtra("distance_km", 0.0)
                 liveSpeed = intent.getDoubleExtra("speed_kmh", 0.0)
                 liveMinutes = intent.getIntExtra("duration_minutes", 0)
-                if (selectedTab == 0 || selectedTab == 2) render()
             }
         }
     }
@@ -49,266 +91,28 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         db = TripDatabase(this)
-        requestPermissionsIfNeeded()
-        render()
-    }
-
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-    private fun text(value: String, size: Float = 14f, color: Int = 0xFF17212B.toInt(), bold: Boolean = false): TextView =
-        TextView(this).apply {
-            text = value; textSize = size; setTextColor(color)
-            if (bold) setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(2), dp(5), dp(2), dp(5))
-        }
-
-    private fun card(): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(13), dp(16), dp(13))
-        background = android.graphics.drawable.GradientDrawable().apply {
-            setColor(Color.WHITE); cornerRadius = dp(16).toFloat()
-            setStroke(dp(1), 0xFFE5EAF0.toInt())
-        }
-    }
-
-    private fun field(hintText: String, value: String = "", decimal: Boolean = true): EditText =
-        EditText(this).apply {
-            hint = hintText
-            setText(value)
-            textSize = 15f
-            setTextColor(0xFF17212B.toInt())
-            setHintTextColor(0xFF82909D.toInt())
-            inputType = if (decimal) InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-                        else InputType.TYPE_CLASS_TEXT
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFFF7F9FB.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(dp(1), 0xFFDCE3EA.toInt())
-            }
-        }
-
-    private fun button(label: String, primary: Boolean = true, action: () -> Unit): Button =
-        Button(this).apply {
-            text = label
-            textSize = 13f
-            isAllCaps = false
-            setTextColor(if (primary) Color.WHITE else 0xFF176B87.toInt())
-            backgroundTintList = android.content.res.ColorStateList.valueOf(
-                if (primary) 0xFF176B87.toInt() else 0xFFE8F3F6.toInt()
-            )
-            setOnClickListener { action() }
-        }
-
-    private fun addGap(parent: LinearLayout, height: Int = 10) {
-        parent.addView(View(this), LinearLayout.LayoutParams(1, dp(height)))
-    }
-
-    private fun addCard(parent: LinearLayout, title: String, body: LinearLayout.() -> Unit) {
-        val c = card()
-        c.addView(text(title, 16f, 0xFF17212B.toInt(), true))
-        c.body()
-        parent.addView(c, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
-    }
-
-    private fun render() {
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFFF3F6F8.toInt()) }
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(17), dp(20), dp(12))
-            setBackgroundColor(0xFF102A36.toInt())
-        }
-        header.addView(text("BIKE MILEAGE PRO", 19f, Color.WHITE, true))
-        header.addView(text("Your ride. Your fuel. Your mileage.", 12f, 0xFFB9D0D9.toInt()))
-        root.addView(header)
-        val scroll = ScrollView(this)
-        content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(15), dp(16), dp(12)) }
-        scroll.addView(content)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        nav = LinearLayout(this).apply {
-            setPadding(dp(4), dp(5), dp(4), dp(5)); setBackgroundColor(Color.WHITE)
-            elevation = dp(8).toFloat()
-        }
-        val labels = listOf("Home", "Vehicle", "Trips", "Fuel")
-        val icons = listOf("⌂", "▣", "↗", "⛽")
-        labels.forEachIndexed { index, label ->
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                setPadding(dp(4), dp(5), dp(4), dp(5))
-                setOnClickListener { selectedTab = index; render() }
-            }
-            item.addView(text(icons[index], 19f, if (selectedTab == index) 0xFF176B87.toInt() else 0xFF788692.toInt(), true).apply { gravity = Gravity.CENTER })
-            item.addView(text(label, 11f, if (selectedTab == index) 0xFF176B87.toInt() else 0xFF788692.toInt(), selectedTab == index).apply { gravity = Gravity.CENTER })
-            nav.addView(item, LinearLayout.LayoutParams(0, -2, 1f))
-        }
-        root.addView(nav)
-        setContentView(root)
-        when (selectedTab) {
-            0 -> dashboard()
-            1 -> vehicle()
-            2 -> trips()
-            3 -> fuel()
-        }
-    }
-
-    private fun dashboard() {
-        content.addView(text("Dashboard", 23f, 0xFF17212B.toInt(), true))
-        content.addView(text("Honda H’ness CB350 DLX Pro • 2026", 13f, 0xFF637381.toInt()))
-        addGap(content, 10)
-        val mileage = db.overallMileage()
-        val fuels = db.fuels()
-        val trips = db.trips()
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun metric(label: String, value: String, color: Int) {
-            val c = card()
-            c.addView(text(label, 11f, 0xFF64748B.toInt()))
-            c.addView(text(value, 22f, color, true))
-            top.addView(c, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(7) })
-        }
-        metric("OVERALL MILEAGE", if (mileage > 0) String.format(Locale.US, "%.1f km/L", mileage) else "— km/L", 0xFF176B87.toInt())
-        metric("TOTAL TRIP KM", String.format(Locale.US, "%.1f km", db.totalTripDistance()), 0xFF1C7C54.toInt())
-        content.addView(top)
-        addGap(content)
-        addCard(content, "Fuel & spending") {
-            addView(text("Fill-ups recorded: ${fuels.size}", 13f))
-            addView(text("Total fuel spend: ₹${String.format(Locale.US, "%.0f", db.totalFuelSpend())}", 13f))
-            addView(text("Last odometer: ${fuels.lastOrNull()?.odometerKm?.let { String.format(Locale.US, "%.1f km", it) } ?: "Not entered"}", 13f))
-            addView(text("Mileage appears after two full-tank entries with increasing odometer readings.", 11f, 0xFF788692.toInt()))
-        }
-        addCard(content, "Mileage chart") {
-            val tabs = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
-            listOf("All", "Recent 7", "Recent 30").forEach { period ->
-                tabs.addView(button(period, chartPeriod == period) { chartPeriod = period; render() },
-                    LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(4) })
-            }
-            addView(tabs)
-            val points = db.mileagePoints().let {
-                when (chartPeriod) { "Recent 7" -> it.takeLast(7); "Recent 30" -> it.takeLast(30); else -> it }
-            }
-            val chart = MileageChartView(this@MainActivity).apply {
-                values = points.map { it.label to it.value }
-                layoutParams = LinearLayout.LayoutParams(-1, dp(190))
-            }
-            addView(chart)
-        }
-        addCard(content, "Current trip") {
-            addView(text(String.format(Locale.US, "%.2f km travelled", liveDistance), 23f, 0xFF176B87.toInt(), true))
-            addView(text(String.format(Locale.US, "%.0f km/h • %d min", liveSpeed, liveMinutes), 13f, 0xFF64748B.toInt()))
-            addView(button("OPEN TRIP TRACKING") { selectedTab = 2; render() })
-        }
-        addCard(content, "Recent activity") {
-            val latestFuel = fuels.lastOrNull()
-            addView(text(latestFuel?.let { "Last fuel: ${it.date} • ${it.litres} L • ₹${it.amount}" } ?: "No fuel entries yet", 12f))
-            addView(text(trips.firstOrNull()?.let { "Last ride: ${it.date} • ${"%.2f".format(it.distanceKm)} km" } ?: "No rides saved yet", 12f))
-        }
-    }
-
-    private fun vehicle() {
-        content.addView(text("Vehicle details", 23f, 0xFF17212B.toInt(), true))
-        content.addView(text("Edit your bike profile. Values are saved on this phone.", 13f, 0xFF637381.toInt()))
-        val name = field("Vehicle name", prefs.getString("name", "Honda H’ness CB350 DLX Pro") ?: "", false)
-        val year = field("Manufacturing year", prefs.getString("year", "2026") ?: "", false)
-        val reg = field("Registration number (optional)", prefs.getString("reg", "") ?: "", false)
-        val odo = field("Current odometer reading (km)", prefs.getString("odo", "") ?: "")
-        val colour = field("Colour / variant (optional)", prefs.getString("variant", "DLX Pro") ?: "", false)
-        addCard(content, "Bike profile") {
-            addView(text("Vehicle name")); addView(name)
-            addGap(this)
-            addView(text("Year")); addView(year)
-            addGap(this)
-            addView(text("Registration")); addView(reg)
-            addGap(this)
-            addView(text("Variant / colour")); addView(colour)
-            addGap(this)
-            addView(text("Current odometer (km)")); addView(odo)
-            addView(button("SAVE VEHICLE DETAILS") {
-                prefs.edit().putString("name", name.text.toString()).putString("year", year.text.toString())
-                    .putString("reg", reg.text.toString()).putString("variant", colour.text.toString())
-                    .putString("odo", odo.text.toString()).apply()
-                Toast.makeText(this@MainActivity, "Vehicle details saved", Toast.LENGTH_SHORT).show()
-            })
-        }
-        addCard(content, "Bluetooth connection") {
-            addView(text(bluetoothStatus, 12f, 0xFF64748B.toInt()))
-            addView(button("SCAN FOR BLE DEVICES") { scanBluetooth() })
-            addView(text("A scan only lists nearby BLE devices. Live ECU data requires a compatible OBD adapter and a verified protocol for this exact motorcycle.", 11f, 0xFF9A5B13.toInt()))
-        }
-    }
-
-    private fun trips() {
-        content.addView(text("Trip tracking", 23f, 0xFF17212B.toInt(), true))
-        content.addView(text("Start GPS tracking before moving. Stop after parking safely.", 13f, 0xFF637381.toInt()))
-        addCard(content, "Live ride") {
-            addView(text(String.format(Locale.US, "%.2f km", liveDistance), 34f, 0xFF176B87.toInt(), true))
-            addView(text(String.format(Locale.US, "%.0f km/h • %d minutes", liveSpeed, liveMinutes), 14f))
-            addView(button("START TRIP") { startRide() })
-            addView(button("STOP & SAVE TRIP", false) { stopRide() })
-            addView(text("GPS distance is an estimate and may differ from the bike odometer. The phone must retain location permission and GPS access.", 11f, 0xFF9A5B13.toInt()))
-        }
-        addCard(content, "Saved trips") {
-            val items = db.trips()
-            if (items.isEmpty()) addView(text("No trips saved yet."))
-            items.forEach {
-                addView(text("${it.date}  •  ${"%.2f".format(it.distanceKm)} km", 14f, 0xFF17212B.toInt(), true))
-                addView(text("Max speed ${it.maxSpeed.toInt()} km/h • ${it.durationMinutes} min", 12f, 0xFF64748B.toInt()))
-                addView(View(this@MainActivity).apply { setBackgroundColor(0xFFE7EDF1.toInt()) },
-                    LinearLayout.LayoutParams(-1, dp(1)))
+        requestNeededPermissions()
+        setContent {
+            MileageTheme {
+                MileageApp(
+                    db = db,
+                    getVehicle = { key, fallback -> prefs.getString(key, fallback) ?: fallback },
+                    saveVehicle = { values ->
+                        prefs.edit().apply { values.forEach { (k, v) -> putString(k, v) } }.apply()
+                    },
+                    liveDistance = liveDistance,
+                    liveSpeed = liveSpeed,
+                    liveMinutes = liveMinutes,
+                    bluetoothStatus = bluetoothStatus,
+                    onStartRide = ::startRide,
+                    onStopRide = ::stopRide,
+                    onScanBluetooth = ::scanBluetooth
+                )
             }
         }
     }
 
-    private fun fuel() {
-        content.addView(text("Fuel & odometer", 23f, 0xFF17212B.toInt(), true))
-        content.addView(text("Record every petrol fill-up with the bike's odometer reading.", 13f, 0xFF637381.toInt()))
-        val date = field("Date and time (auto)", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()), false)
-        val odo = field("Odometer reading (km)")
-        val litres = field("Petrol filled (litres)")
-        val amount = field("Total amount paid (₹)")
-        var fullTank = true
-        val full = CheckBox(this).apply {
-            text = "Filled tank completely (recommended for accurate mileage)"
-            isChecked = true
-            setTextColor(0xFF17212B.toInt())
-            setOnCheckedChangeListener { _, checked -> fullTank = checked }
-        }
-        addCard(content, "Add petrol fill-up") {
-            addView(text("Fill-up date")); addView(date)
-            addView(text("Bike odometer reading")); addView(odo)
-            addView(text("Litres filled")); addView(litres)
-            addView(text("Amount paid")); addView(amount)
-            addView(full)
-            addView(button("SAVE FUEL & ODOMETER ENTRY") {
-                val o = odo.text.toString().toDoubleOrNull()
-                val l = litres.text.toString().toDoubleOrNull()
-                val a = amount.text.toString().toDoubleOrNull()
-                if (o == null || l == null || a == null || o < 0 || l <= 0 || a < 0) {
-                    Toast.makeText(this@MainActivity, "Enter valid odometer, litres and amount", Toast.LENGTH_LONG).show()
-                } else {
-                    val existing = db.fuels().lastOrNull()
-                    if (existing != null && o <= existing.odometerKm) {
-                        Toast.makeText(this@MainActivity, "Odometer must be higher than the previous entry (${existing.odometerKm} km).", Toast.LENGTH_LONG).show()
-                    } else {
-                        val enteredDate = date.text.toString().ifBlank { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()) }
-                        db.saveFuel(enteredDate, l, a, o, fullTank)
-                        prefs.edit().putString("odo", o.toString()).apply()
-                        Toast.makeText(this@MainActivity, "Fuel and odometer saved", Toast.LENGTH_SHORT).show()
-                        selectedTab = 0; render()
-                    }
-                }
-            })
-        }
-        addCard(content, "Fuel history & mileage") {
-            val entries = db.fuels()
-            if (entries.isEmpty()) addView(text("No fuel entries yet."))
-            entries.asReversed().forEach { item ->
-                addView(text("${item.date} • ${item.odometerKm} km", 14f, 0xFF17212B.toInt(), true))
-                addView(text("${item.litres} L • ₹${item.amount} • ${if (item.fullTank) "Full tank" else "Partial fill"}", 12f, 0xFF64748B.toInt()))
-                db.mileageForFuelEntry(item.id)?.let { calculated ->
-                    addView(text(String.format(Locale.US, "Calculated: %.2f km/L", calculated), 13f, 0xFF1C7C54.toInt(), true))
-                }
-                addGap(this, 6)
-            }
-        }
-    }
-
-    private fun requestPermissionsIfNeeded() {
+    private fun requestNeededPermissions() {
         val required = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
@@ -319,18 +123,18 @@ class MainActivity : Activity() {
         }
         if (Build.VERSION.SDK_INT >= 33) required += Manifest.permission.POST_NOTIFICATIONS
         val missing = required.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), 100)
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
     }
 
     private fun startRide() {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissionsIfNeeded()
-            Toast.makeText(this, "Allow location permission, then tap Start Trip again.", Toast.LENGTH_LONG).show()
+            requestNeededPermissions()
+            Toast.makeText(this, "Allow location permission, then start again.", Toast.LENGTH_LONG).show()
             return
         }
         val lm = getSystemService(LOCATION_SERVICE) as LocationManager
         if (!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            Toast.makeText(this, "Please enable phone Location/GPS.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Please enable phone GPS/location.", Toast.LENGTH_LONG).show()
             return
         }
         val intent = Intent(this, RideTrackingService::class.java).setAction(RideTrackingService.ACTION_START)
@@ -340,8 +144,7 @@ class MainActivity : Activity() {
 
     private fun stopRide() {
         startService(Intent(this, RideTrackingService::class.java).setAction(RideTrackingService.ACTION_STOP))
-        Toast.makeText(this, "Trip stopped and saved if GPS distance exceeded 20 metres.", Toast.LENGTH_SHORT).show()
-        content.postDelayed({ if (selectedTab == 2 || selectedTab == 0) render() }, 900)
+        Toast.makeText(this, "Trip stopped and saved.", Toast.LENGTH_SHORT).show()
     }
 
     @Suppress("MissingPermission")
@@ -349,41 +152,35 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 31 &&
             (checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED ||
              checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED)) {
-            requestPermissionsIfNeeded()
+            requestNeededPermissions()
             bluetoothStatus = "Grant Nearby devices permission and scan again."
             return
         }
         val adapter = (getSystemService(BLUETOOTH_SERVICE) as BluetoothManager).adapter
-        if (adapter == null || !adapter.isEnabled) { bluetoothStatus = "Turn on Bluetooth first."; render(); return }
+        if (adapter == null || !adapter.isEnabled) {
+            bluetoothStatus = "Turn on Bluetooth first."
+            return
+        }
         val scanner = adapter.bluetoothLeScanner
-        if (scanner == null) { bluetoothStatus = "BLE scanner unavailable."; render(); return }
-        val devices = linkedSetOf<String>()
-        bluetoothStatus = "Scanning nearby BLE devices for 10 seconds…"
-        render()
+        if (scanner == null) { bluetoothStatus = "BLE scanner unavailable."; return }
+        val found = linkedSetOf<String>()
+        bluetoothStatus = "Scanning nearby BLE devices…"
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val name = try { result.device.name ?: "Unnamed BLE device" } catch (_: SecurityException) { "Protected device" }
-                devices.add("$name • ${result.device.address} • ${result.rssi} dBm")
-                runOnUiThread {
-                    bluetoothStatus = if (devices.isEmpty()) "Scanning…" else devices.take(12).joinToString("\n")
-                    if (selectedTab == 1) render()
-                }
+                found.add("$name • ${result.device.address} • ${result.rssi} dBm")
+                bluetoothStatus = found.take(10).joinToString("\n")
             }
-            override fun onScanFailed(errorCode: Int) {
-                runOnUiThread { bluetoothStatus = "Bluetooth scan failed: $errorCode"; if (selectedTab == 1) render() }
-            }
+            override fun onScanFailed(errorCode: Int) { bluetoothStatus = "Scan failed: $errorCode" }
         }
         try {
             scanner.startScan(callback)
             window.decorView.postDelayed({
                 try { scanner.stopScan(callback) } catch (_: SecurityException) {}
-                if (devices.isEmpty()) bluetoothStatus = "No BLE devices found. A powered compatible adapter may be needed."
-                else bluetoothStatus = "Found ${devices.size} device(s):\n" + devices.take(12).joinToString("\n")
-                if (selectedTab == 1) render()
+                bluetoothStatus = if (found.isEmpty()) "No BLE devices found. A powered compatible adapter may be needed."
+                                  else "Found ${found.size} device(s):\n" + found.take(10).joinToString("\n")
             }, 10_000L)
-        } catch (_: SecurityException) {
-            bluetoothStatus = "Bluetooth permission denied."; render()
-        }
+        } catch (_: SecurityException) { bluetoothStatus = "Bluetooth permission denied." }
     }
 
     override fun onResume() {
@@ -392,9 +189,478 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(rideReceiver, filter, RECEIVER_NOT_EXPORTED)
         else @Suppress("DEPRECATION") registerReceiver(rideReceiver, filter)
     }
-
     override fun onPause() {
         super.onPause()
         try { unregisterReceiver(rideReceiver) } catch (_: IllegalArgumentException) {}
+    }
+}
+
+@Composable
+private fun MileageTheme(content: @Composable () -> Unit) {
+    val colors = darkColorScheme(
+        primary = Teal, onPrimary = Ink, secondary = Orange, background = Ink,
+        surface = Panel, onSurface = White, onBackground = White,
+        surfaceVariant = Panel2, onSurfaceVariant = Muted
+    )
+    MaterialTheme(colorScheme = colors, content = content)
+}
+
+private enum class Screen(val label: String) {
+    HOME("Home"), VEHICLE("Vehicle"), TRIPS("Trips"), FUEL("Fuel")
+}
+
+@Composable
+private fun MileageApp(
+    db: TripDatabase,
+    getVehicle: (String, String) -> String,
+    saveVehicle: (Map<String, String>) -> Unit,
+    liveDistance: Double, liveSpeed: Double, liveMinutes: Int,
+    bluetoothStatus: String, onStartRide: () -> Unit, onStopRide: () -> Unit,
+    onScanBluetooth: () -> Unit
+) {
+    var selected by remember { mutableStateOf(Screen.HOME) }
+    var refresh by remember { mutableIntStateOf(0) }
+    var chartRange by remember { mutableStateOf("ALL") }
+    val trips = remember(refresh) { db.trips() }
+    val fuels = remember(refresh) { db.fuels() }
+    val mileage = remember(refresh) { db.overallMileage() }
+    val mileagePoints = remember(refresh) { db.mileagePoints() }
+
+    Scaffold(
+        containerColor = Ink,
+        bottomBar = {
+            NavigationBar(containerColor = Color(0xFF0D1C2A), contentColor = Teal) {
+                val items = listOf(
+                    Screen.HOME to Icons.Default.Dashboard,
+                    Screen.VEHICLE to Icons.Default.DirectionsBike,
+                    Screen.TRIPS to Icons.Default.Route,
+                    Screen.FUEL to Icons.Default.LocalGasStation
+                )
+                items.forEach { (screen, icon) ->
+                    NavigationBarItem(
+                        selected = selected == screen,
+                        onClick = { selected = screen; refresh++ },
+                        icon = { Icon(icon, contentDescription = screen.label) },
+                        label = { Text(screen.label, fontSize = 11.sp) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Teal, selectedTextColor = Teal,
+                            indicatorColor = Color(0xFF183D48),
+                            unselectedIconColor = Muted, unselectedTextColor = Muted
+                        )
+                    )
+                }
+            }
+        }
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            TopHeader(selected)
+            when (selected) {
+                Screen.HOME -> DashboardScreen(
+                    mileage, db.totalTripDistance(), db.totalFuelSpend(), fuels.lastOrNull()?.odometerKm,
+                    mileagePoints, chartRange, { chartRange = it }, liveDistance, liveSpeed, liveMinutes,
+                    onOpenTrips = { selected = Screen.TRIPS }
+                )
+                Screen.VEHICLE -> VehicleScreen(getVehicle, saveVehicle, bluetoothStatus, onScanBluetooth)
+                Screen.TRIPS -> TripsScreen(trips, liveDistance, liveSpeed, liveMinutes, onStartRide, onStopRide)
+                Screen.FUEL -> FuelScreen(fuels, onSave = { date, odo, litres, amount, full ->
+                    val previous = db.fuels().lastOrNull()
+                    if (previous != null && odo <= previous.odometerKm) {
+                        return@FuelScreen "Odometer must be greater than the previous entry (${previous.odometerKm} km)."
+                    }
+                    db.saveFuel(date, litres, amount, odo, full)
+                    refresh++
+                    null
+                })
+            }
+        }
+    }
+}
+
+@Composable
+private fun TopHeader(screen: Screen) {
+    Row(
+        Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFF10283A), Color(0xFF0D1C2A))))
+            .padding(horizontal = 20.dp, vertical = 17.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("BIKE MILEAGE PRO", color = Teal, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            Text(screen.label, color = White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+        }
+        Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF1A3C4A)), contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.DirectionsBike, contentDescription = null, tint = Teal)
+        }
+    }
+}
+
+@Composable
+private fun DashboardScreen(
+    mileage: Double, totalKm: Double, spend: Double, lastOdo: Double?,
+    points: List<MileagePoint>, range: String, onRange: (String) -> Unit,
+    liveDistance: Double, liveSpeed: Double, liveMinutes: Int, onOpenTrips: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 22.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Your ride, measured.", color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text("Honda H’ness CB350 DLX Pro · 2026", color = Muted, fontSize = 12.sp)
+                }
+                Surface(color = Color(0xFF153B3B), shape = RoundedCornerShape(50)) {
+                    Text("● READY", Modifier.padding(horizontal = 11.dp, vertical = 7.dp), color = Teal, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        item {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = Panel,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF254357))
+            ) {
+                Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF173B49), Panel))).padding(20.dp)) {
+                    Text("OVERALL FUEL MILEAGE", color = Muted, fontSize = 11.sp, letterSpacing = 1.5.sp)
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(if (mileage > 0) String.format(Locale.US, "%.1f", mileage) else "--",
+                            color = Teal, fontSize = 54.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(" km/L", Modifier.padding(bottom = 9.dp), color = White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text(if (mileage > 0) "Calculated from full-tank entries" else "Add two full-tank entries to calculate mileage",
+                        color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.height(15.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        MetricPill("TRIP DISTANCE", String.format(Locale.US, "%.1f km", totalKm), Modifier.weight(1f))
+                        MetricPill("LAST ODOMETER", lastOdo?.let { String.format(Locale.US, "%.0f km", it) } ?: "Not set", Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard("FUEL SPEND", "₹${spend.toInt()}", "All recorded fill-ups", Modifier.weight(1f), Orange)
+                StatCard("LIVE TRIP", String.format(Locale.US, "%.2f km", liveDistance), "${liveSpeed.toInt()} km/h · $liveMinutes min", Modifier.weight(1f), Teal)
+            }
+        }
+        item {
+            Surface(color = Panel, shape = RoundedCornerShape(22.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20384B))) {
+                Column(Modifier.fillMaxWidth().padding(17.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Mileage trend", color = White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Text("Full-tank calculation history", color = Muted, fontSize = 11.sp)
+                        }
+                        Icon(Icons.Default.Timeline, tint = Teal, contentDescription = null)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("ALL", "7", "30").forEach { value ->
+                            FilterChip(
+                                selected = range == value, onClick = { onRange(value) },
+                                label = { Text(if (value == "ALL") "All" else "$value entries", fontSize = 11.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFF1C4951), selectedLabelColor = Teal,
+                                    labelColor = Muted
+                                )
+                            )
+                        }
+                    }
+                    val shown = when (range) { "7" -> points.takeLast(7); "30" -> points.takeLast(30); else -> points }
+                    MileageLineChart(shown.map { it.value })
+                    if (shown.isEmpty()) Text("Your mileage chart will appear after two full-tank records.", color = Muted, fontSize = 11.sp)
+                    else Text("${shown.size} mileage record(s) · km/L", color = Muted, fontSize = 10.sp)
+                }
+            }
+        }
+        item {
+            Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
+                Row(Modifier.fillMaxWidth().clickable { onOpenTrips() }.padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Route, tint = Teal, contentDescription = null, modifier = Modifier.size(28.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Track your next ride", color = White, fontWeight = FontWeight.Bold)
+                        Text("GPS distance, speed and duration", color = Muted, fontSize = 11.sp)
+                    }
+                    Text("OPEN  →", color = Teal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricPill(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xFF102838)).padding(12.dp)) {
+        Text(label, color = Muted, fontSize = 9.sp, letterSpacing = 1.sp)
+        Text(value, color = White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun StatCard(title: String, value: String, detail: String, modifier: Modifier, accent: Color) {
+    Surface(modifier, color = Panel, shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20384B))) {
+        Column(Modifier.padding(15.dp)) {
+            Text(title, color = Muted, fontSize = 10.sp, letterSpacing = 1.sp)
+            Text(value, color = accent, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+            Text(detail, color = Muted, fontSize = 10.sp)
+        }
+    }
+}
+
+@Composable
+private fun MileageLineChart(values: List<Double>) {
+    Canvas(Modifier.fillMaxWidth().height(150.dp)) {
+        val left = 12.dp.toPx(); val right = size.width - 10.dp.toPx()
+        val top = 10.dp.toPx(); val bottom = size.height - 12.dp.toPx()
+        val grid = Color(0xFF294052)
+        for (i in 0..3) {
+            val y = top + (bottom - top) * i / 3f
+            drawLine(grid, androidx.compose.ui.geometry.Offset(left, y), androidx.compose.ui.geometry.Offset(right, y), 1.dp.toPx())
+        }
+        if (values.isNotEmpty()) {
+            val maxValue = maxOf(10.0, values.maxOrNull()!! * 1.2).toFloat()
+            val pts = values.mapIndexed { index, v ->
+                val x = if (values.size == 1) (left + right) / 2f else left + (right-left) * index / (values.size-1).toFloat()
+                val y = bottom - (v.toFloat()/maxValue)*(bottom-top)
+                androidx.compose.ui.geometry.Offset(x,y)
+            }
+            val path = Path().apply { pts.forEachIndexed { i, p -> if (i == 0) moveTo(p.x,p.y) else lineTo(p.x,p.y) } }
+            drawPath(path, Teal, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+            pts.forEach { drawCircle(Teal, radius = 4.dp.toPx(), center = it) }
+        }
+    }
+}
+
+@Composable
+private fun VehicleScreen(
+    getVehicle: (String, String) -> String,
+    saveVehicle: (Map<String, String>) -> Unit,
+    bluetoothStatus: String,
+    onScanBluetooth: () -> Unit
+) {
+    var name by remember { mutableStateOf(getVehicle("name", "Honda H’ness CB350 DLX Pro")) }
+    var year by remember { mutableStateOf(getVehicle("year", "2026")) }
+    var reg by remember { mutableStateOf(getVehicle("reg", "")) }
+    var variant by remember { mutableStateOf(getVehicle("variant", "DLX Pro")) }
+    var odo by remember { mutableStateOf(getVehicle("odo", "")) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item {
+            SectionTitle("Your motorcycle", "Keep your vehicle information up to date.")
+            Surface(color = Panel, shape = RoundedCornerShape(22.dp)) {
+                Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.DirectionsBike, tint = Teal, modifier = Modifier.size(40.dp), contentDescription = null)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(name, color = White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Text("$year · $variant", color = Muted, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Surface(color = Panel, shape = RoundedCornerShape(22.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("VEHICLE PROFILE", color = Teal, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                    DarkField("Vehicle name", name, { name = it })
+                    DarkField("Manufacturing year", year, { year = it }, KeyboardType.Number)
+                    DarkField("Registration number", reg, { reg = it })
+                    DarkField("Variant / colour", variant, { variant = it })
+                    DarkField("Current odometer (km)", odo, { odo = it }, KeyboardType.Decimal)
+                    Button(onClick = {
+                        saveVehicle(mapOf("name" to name, "year" to year, "reg" to reg, "variant" to variant, "odo" to odo))
+                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Ink)) {
+                        Text("SAVE VEHICLE DETAILS", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        item {
+            Surface(color = Panel, shape = RoundedCornerShape(22.dp)) {
+                Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Bluetooth, tint = Teal, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Bluetooth discovery", color = White, fontWeight = FontWeight.Bold)
+                    }
+                    Text(bluetoothStatus, color = Muted, fontSize = 12.sp)
+                    OutlinedButton(onClick = onScanBluetooth, modifier = Modifier.fillMaxWidth()) {
+                        Text("SCAN NEARBY BLE DEVICES", color = Teal)
+                    }
+                    Text("BLE scanning discovers nearby devices only. Reading live ECU values requires a compatible diagnostic adapter and verified protocol for this exact bike.", color = Orange, fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TripsScreen(
+    trips: List<TripRecord>, liveDistance: Double, liveSpeed: Double, liveMinutes: Int,
+    onStart: () -> Unit, onStop: () -> Unit
+) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item {
+            SectionTitle("Ride tracking", "GPS-based trip distance and speed estimate.")
+            Surface(
+                color = Panel, shape = RoundedCornerShape(24.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF254357))
+            ) {
+                Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                    Text("CURRENT TRIP DISTANCE", color = Muted, fontSize = 10.sp, letterSpacing = 1.4.sp)
+                    Text(String.format(Locale.US, "%.2f", liveDistance), color = Teal, fontSize = 52.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("KILOMETRES", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
+                    Spacer(Modifier.height(15.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        MetricPill("CURRENT SPEED", "${liveSpeed.toInt()} km/h", Modifier.weight(1f))
+                        MetricPill("DURATION", "$liveMinutes min", Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    Button(onClick = onStart, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Ink)) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Text("START TRIP", fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Stop, contentDescription = null, tint = Orange)
+                        Text("STOP & SAVE TRIP", color = Orange)
+                    }
+                    Text("Keep GPS enabled. Tracking runs in a foreground service while the screen is off.", color = Muted, fontSize = 10.sp)
+                }
+            }
+        }
+        item { SectionTitle("Ride history", "Your most recent saved trips.") }
+        if (trips.isEmpty()) item { EmptyState("No trips recorded yet", "Start a ride to build your daily travel history.") }
+        items(trips, key = { it.id }) { trip ->
+            Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+                Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF1A3A45)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Route, tint = Teal, contentDescription = null)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(trip.date, color = White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("Max ${trip.maxSpeed.toInt()} km/h · ${trip.durationMinutes} min", color = Muted, fontSize = 11.sp)
+                    }
+                    Text(String.format(Locale.US, "%.2f km", trip.distanceKm), color = Teal, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FuelScreen(
+    fuels: List<FuelRecord>,
+    onSave: (String, Double, Double, Double, Boolean) -> String?
+) {
+    var date by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())) }
+    var odo by remember { mutableStateOf("") }
+    var litres by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf("") }
+    var fullTank by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var savedMessage by remember { mutableStateOf<String?>(null) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item {
+            SectionTitle("Fuel & odometer", "Log every fill-up for reliable mileage reports.")
+            Surface(color = Panel, shape = RoundedCornerShape(22.dp)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("NEW FILL-UP", color = Teal, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.4.sp)
+                    DarkField("Date and time", date, { date = it })
+                    DarkField("Odometer reading (km)", odo, { odo = it }, KeyboardType.Decimal)
+                    DarkField("Petrol filled (litres)", litres, { litres = it }, KeyboardType.Decimal)
+                    DarkField("Total amount paid (₹)", amount, { amount = it }, KeyboardType.Decimal)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = fullTank, onCheckedChange = { fullTank = it }, colors = CheckboxDefaults.colors(checkedColor = Teal))
+                        Text("Full tank (recommended)", color = White, fontSize = 13.sp)
+                    }
+                    error?.let { Text(it, color = Color(0xFFFF8E8E), fontSize = 12.sp) }
+                    savedMessage?.let { Text(it, color = Green, fontSize = 12.sp) }
+                    Button(onClick = {
+                        val o = odo.toDoubleOrNull()
+                        val l = litres.toDoubleOrNull()
+                        val a = amount.toDoubleOrNull()
+                        if (o == null || l == null || a == null || o < 0 || l <= 0 || a < 0) {
+                            error = "Enter a valid odometer, litres and amount."
+                            savedMessage = null
+                        } else {
+                            error = onSave(date, o, l, a, fullTank)
+                            savedMessage = if (error == null) "Fuel entry saved successfully." else null
+                            if (error == null) { odo = ""; litres = ""; amount = "" }
+                        }
+                    }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Ink)) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Text("SAVE FUEL ENTRY", fontWeight = FontWeight.Bold)
+                    }
+                    Text("Mileage is calculated between consecutive full-tank entries. Partial fills are recorded but not used as standalone mileage intervals.", color = Muted, fontSize = 10.sp)
+                }
+            }
+        }
+        item { SectionTitle("Fill-up history", "${fuels.size} recorded entries") }
+        if (fuels.isEmpty()) item { EmptyState("No fuel entries yet", "Add your last petrol fill-up and odometer reading.") }
+        items(fuels.asReversed(), key = { it.id }) { fuel ->
+            val previous = fuels.lastOrNull { it.id < fuel.id && it.fullTank && fuel.fullTank && it.odometerKm > fuel.odometerKm }
+            Surface(color = Panel, shape = RoundedCornerShape(17.dp)) {
+                Column(Modifier.fillMaxWidth().padding(15.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(fuel.date, color = White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text("${fuel.odometerKm} km odometer · ${if (fuel.fullTank) "Full tank" else "Partial fill"}", color = Muted, fontSize = 11.sp)
+                        }
+                        Text(String.format(Locale.US, "₹%.0f", fuel.amount), color = Orange, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(String.format(Locale.US, "%.2f L filled", fuel.litres), color = White, fontSize = 12.sp)
+                    if (fuel.fullTank) {
+                        val prev = fuels.lastOrNull { it.id < fuel.id && it.fullTank && it.odometerKm < fuel.odometerKm }
+                        if (prev != null && fuel.litres > 0) {
+                            Text(String.format(Locale.US, "Mileage interval: %.2f km/L", (fuel.odometerKm - prev.odometerKm) / fuel.litres),
+                                color = Green, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String, subtitle: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(title, color = White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+        Text(subtitle, color = Muted, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun EmptyState(title: String, subtitle: String) {
+    Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
+        Column(Modifier.fillMaxWidth().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.Speed, tint = Teal, contentDescription = null, modifier = Modifier.size(30.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(title, color = White, fontWeight = FontWeight.Bold)
+            Text(subtitle, color = Muted, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun DarkField(label: String, value: String, onValue: (String) -> Unit, keyboard: KeyboardType = KeyboardType.Text) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(label, color = Muted, fontSize = 11.sp)
+        OutlinedTextField(
+            value = value, onValueChange = onValue, modifier = Modifier.fillMaxWidth(),
+            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = keyboard),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Teal, unfocusedBorderColor = Color(0xFF365065),
+                focusedTextColor = White, unfocusedTextColor = White,
+                cursorColor = Teal, focusedLabelColor = Teal,
+                unfocusedContainerColor = Color(0xFF0D1C2A),
+                focusedContainerColor = Color(0xFF0D1C2A)
+            )
+        )
     }
 }
