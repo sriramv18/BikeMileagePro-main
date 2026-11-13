@@ -20,7 +20,7 @@ class _FuelScreenState extends State<FuelScreen> {
       TextField(controller:litres,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Fuel quantity (L)')),
       TextField(controller:amount,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Amount (₹)')),
       SwitchListTile(value:full,onChanged:(v)=>setDialog(()=>full=v),title:const Text('Full tank')),
-    ])),actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),TextButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Save'))]));
+    ])),actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),TextButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Save'))])));
     if(ok==true) {
       final o=double.tryParse(odo.text),l=double.tryParse(litres.text),a=double.tryParse(amount.text);
       if(o==null||l==null||a==null||l<=0||a<0||vehicleId==null)return;

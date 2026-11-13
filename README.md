@@ -57,3 +57,7 @@ Dashboard overall estimated mileage:
 - sum of saved trip distances / sum of saved estimated fuel litres
 
 This estimate is not actual measured fuel economy. Actual measured mileage should use consecutive full-tank odometer records.
+
+
+## v1.0.1 build correction
+Fixed a missing closing parenthesis in the fuel-entry dialog (`fuel_screen.dart`) that caused `flutter analyze` to stop with `expected token`. The remaining `material.dart` notices in the reported workflow are deprecation notices, not the syntax failure shown in the screenshot.
