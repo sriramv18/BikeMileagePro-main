@@ -1,7 +1,6 @@
 package com.sriram.bikemileagepro
 
 import android.Manifest
-import android.app.Activity
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
@@ -258,15 +257,15 @@ private fun MileageApp(
                 Screen.HOME -> DashboardScreen(
                     mileage, db.totalTripDistance(), db.totalFuelSpend(), fuels.lastOrNull()?.odometerKm,
                     mileagePoints, chartRange, { chartRange = it }, liveDistance, liveSpeed, liveMinutes,
+                    vehicleName = getVehicle("name", "My motorcycle"),
+                    vehicleYear = getVehicle("year", ""), vehicleVariant = getVehicle("variant", ""),
                     onOpenTrips = { selected = Screen.TRIPS }
                 )
                 Screen.VEHICLE -> VehicleScreen(getVehicle, saveVehicle, bluetoothStatus, onScanBluetooth)
                 Screen.TRIPS -> TripsScreen(trips, liveDistance, liveSpeed, liveMinutes, onStartRide, onStopRide)
                 Screen.FUEL -> FuelScreen(fuels, onSave = { date, odo, litres, amount, full ->
-                    val previous = db.fuels().lastOrNull()
-                    if (previous != null && odo <= previous.odometerKm) {
-                        return@FuelScreen "Odometer must be greater than the previous entry (${previous.odometerKm} km)."
-                    }
+                    val validation = db.validateFuelEntry(odo, litres, amount)
+                    if (validation != null) return@FuelScreen validation
                     db.saveFuel(date, litres, amount, odo, full)
                     refresh++
                     null
@@ -297,7 +296,9 @@ private fun TopHeader(screen: Screen) {
 private fun DashboardScreen(
     mileage: Double, totalKm: Double, spend: Double, lastOdo: Double?,
     points: List<MileagePoint>, range: String, onRange: (String) -> Unit,
-    liveDistance: Double, liveSpeed: Double, liveMinutes: Int, onOpenTrips: () -> Unit
+    liveDistance: Double, liveSpeed: Double, liveMinutes: Int,
+    vehicleName: String, vehicleYear: String, vehicleVariant: String,
+    onOpenTrips: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -308,7 +309,7 @@ private fun DashboardScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Your ride, measured.", color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text("Honda H’ness CB350 DLX Pro · 2026", color = Muted, fontSize = 12.sp)
+                    Text(listOf(vehicleName, vehicleVariant, vehicleYear).filter { it.isNotBlank() }.joinToString(" · "), color = Muted, fontSize = 12.sp)
                 }
                 Surface(color = Color(0xFF153B3B), shape = RoundedCornerShape(50)) {
                     Text("● READY", Modifier.padding(horizontal = 11.dp, vertical = 7.dp), color = Teal, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -551,6 +552,15 @@ private fun TripsScreen(
     }
 }
 
+private fun dbMileageForEntry(entries: List<FuelRecord>, fuelId: Long): Double? {
+    val current = entries.indexOfFirst { it.id == fuelId }
+    if (current < 0 || !entries[current].fullTank) return null
+    val previous = (current - 1 downTo 0).firstOrNull { entries[it].fullTank } ?: return null
+    val km = entries[current].odometerKm - entries[previous].odometerKm
+    val litres = entries.subList(previous + 1, current + 1).sumOf { it.litres }
+    return if (km > 0.0 && litres > 0.0) km / litres else null
+}
+
 @Composable
 private fun FuelScreen(
     fuels: List<FuelRecord>,
@@ -602,7 +612,10 @@ private fun FuelScreen(
         item { SectionTitle("Fill-up history", "${fuels.size} recorded entries") }
         if (fuels.isEmpty()) item { EmptyState("No fuel entries yet", "Add your last petrol fill-up and odometer reading.") }
         items(fuels.asReversed(), key = { it.id }) { fuel ->
-            val previous = fuels.lastOrNull { it.id < fuel.id && it.fullTank && fuel.fullTank && it.odometerKm > fuel.odometerKm }
+            val intervalMileage = if (fuel.fullTank) {
+                // Database calculation includes partial fill-ups between full tanks.
+                fuels.firstOrNull { it.id == fuel.id }?.let { dbMileageForEntry(fuels, it.id) }
+            } else null
             Surface(color = Panel, shape = RoundedCornerShape(17.dp)) {
                 Column(Modifier.fillMaxWidth().padding(15.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -614,12 +627,9 @@ private fun FuelScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(String.format(Locale.US, "%.2f L filled", fuel.litres), color = White, fontSize = 12.sp)
-                    if (fuel.fullTank) {
-                        val prev = fuels.lastOrNull { it.id < fuel.id && it.fullTank && it.odometerKm < fuel.odometerKm }
-                        if (prev != null && fuel.litres > 0) {
-                            Text(String.format(Locale.US, "Mileage interval: %.2f km/L", (fuel.odometerKm - prev.odometerKm) / fuel.litres),
-                                color = Green, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
+                    if (intervalMileage != null) {
+                        Text(String.format(Locale.US, "Actual mileage interval: %.2f km/L", intervalMileage),
+                            color = Green, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
                 }
             }
