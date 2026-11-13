@@ -20,4 +20,10 @@ export interface Trip {
   mode: TrackingMode; status: TripStatus; distanceKm: number;
   start?: RoutePoint; end?: RoutePoint; route: RoutePoint[];
   maxSpeedKmh?: number; averageSpeedKmh?: number;
+  /** Snapshot of the vehicle's reference mileage when this trip is completed. */
+  referenceMileageKmPerL?: number;
+  /** Estimated fuel values are snapshots and do not change when vehicle settings change. */
+  estimatedFuelLitres?: number;
+  fuelPricePerLitre?: number;
+  estimatedFuelCost?: number;
 }

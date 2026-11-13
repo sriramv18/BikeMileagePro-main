@@ -1,38 +1,36 @@
-# SR Mobility Labs — Bike Mileage Pro
+# Bike Mileage Pro
 
-React Native app source and GitHub Actions Android debug-APK workflow.
+React Native pilot application and GitHub Actions workflow for building a standalone Android release APK.
 
-## Build APK on GitHub
+## Build on GitHub
 
-1. Create or open your GitHub repository.
-2. Upload/commit the contents of this folder to the repository root.
-3. Ensure the default branch is `main` (or `master`).
-4. Open **Actions** → **SR Mobility Labs - Bike Mileage Pro Android APK**.
-5. Select **Run workflow** for a manual build, or push a commit to `main`.
-6. When the run succeeds, open the run → **Artifacts** → download `Bike-Mileage-Pro-debug-APK`.
-7. Extract the ZIP artifact; it contains `app-debug.apk`.
+1. Upload the **contents** of this ZIP to the root of your GitHub repository.
+2. Push to `main`/`master`, or open **Actions → Bike Mileage Pro Android APK → Run workflow**.
+3. Wait for the workflow to finish successfully.
+4. Open the run's **Artifacts** section and download `Bike-Mileage-Pro-release-APK`.
+5. Extract the artifact ZIP and install `app-release.apk` on your Android phone.
 
-## What this workflow does
+## Important fix for “Unable to load script”
 
-- Checks out the repository.
-- Sets up Node.js 22 and Java 17.
-- Generates a fresh React Native Android host project on the GitHub runner.
-- Copies the app source from `mobile/src`.
-- Installs React Navigation dependencies.
-- Runs `./gradlew assembleDebug`.
-- Uploads the APK as a 14-day workflow artifact.
+The earlier workflow built `assembleDebug`. React Native debug APKs normally expect Metro to serve the JavaScript bundle. This updated workflow builds `:app:assembleRelease`, which bundles `index.android.bundle` into the APK. The installed release APK should open without Metro, a computer, USB debugging, or `adb reverse`.
 
-The Android host is generated during CI, so you do not need to commit a generated `android/` folder for this starter workflow.
+The workflow also sets the launcher label to **Bike Mileage Pro** and configures an adaptive launcher icon.
 
-## Important scope and limitations
+## Scope
 
-This is a **buildable React Native UI starter**, not a completed migration of every native Android feature. GPS foreground tracking, persistent trip/fuel database, route maps, date picker forms, OBD-II/Bluetooth protocol integration, cloud sync, subscriptions, production signing, iOS host, app icon and splash screen still need implementation and device testing. The current Trips screen includes starter UI/state logic only.
+This is the Bike Mileage Pro React Native UI starter previously supplied, not a complete migration of all native Bike Mileage Pro functionality. GPS background tracking, persistent trip/fuel storage, route maps, OBD-II/Bluetooth integration, cloud sync, subscriptions and full production QA require separate implementation and testing.
 
-The APK produced by this workflow is a debug build for testing. A Play Store release requires a signed release build and secure signing secrets.
+The release APK generated here is for device testing. It is not yet a Play Store-signed production package. Add secure upload-keystore signing before Play Store publication. Do not commit keystore files or passwords.
 
-## Repository layout
 
-- `.github/workflows/android-build.yml` — CI build workflow
-- `mobile/src/` — React Native screens, services and app entry
-- `mobile/tsconfig.json` — TypeScript config
-- `docs/` — feature matrix and native integration notes
+## Trip-wise and overall estimated mileage
+
+The mileage calculation service is included in `mobile/src/services/tripMileage.ts`.
+
+- Each completed trip can store a snapshot of the vehicle's reference mileage and fuel price.
+- Per-trip estimated fuel = trip distance ÷ reference mileage.
+- Per-trip estimated fuel cost = estimated fuel × saved fuel price.
+- Overall estimated mileage is weighted: total distance of trips with estimates ÷ total estimated fuel for those trips.
+- Saved snapshots are not recalculated when the vehicle's reference mileage or fuel price changes later.
+
+**Important limitation:** this ZIP is still a UI starter. GPS tracking, completed-trip persistence, vehicle reference-mileage setup, fuel-price entry and connecting the calculation service to the live trip-completion flow are not yet implemented. The calculation logic is ready, but live trip and dashboard figures will not populate until those data flows are completed. Estimated mileage is not actual measured fuel efficiency.
