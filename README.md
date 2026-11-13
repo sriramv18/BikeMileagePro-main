@@ -1,68 +1,32 @@
-# Bike Mileage Pro — Flutter
+# Bike Mileage Pro – Flutter functional update
 
-Flutter/Dart Android-first rebuild starter for Bike Mileage Pro.
+This update prioritizes vehicle, GPS trip, fuel/mileage and Bluetooth LE discovery. Map rendering has been removed from the app flow as requested; saved trip GPS points remain stored locally for future use.
 
-## Included in this source
-- Dark dashboard and Home / Vehicles / Trips / Fuel navigation
-- SQLite local database with a default vehicle
-- Add/delete vehicle records with reference mileage and fuel price
-- Fuel fill-up entry form with odometer, litres, amount and full/partial flag
-- Foreground GPS trip recording while the Trips screen is open
-- Per-trip estimated fuel and fuel cost snapshots
-- Saved trip history and Google Maps route polyline view
-- Dashboard totals based on saved trip/fuel records
-- GitHub Actions workflow for Flutter analyze, tests and release APK
+## Implemented in this update
 
-## Build locally
-Install Flutter stable and Android SDK, then:
-```bash
-flutter pub get
-flutter analyze
-flutter test
-flutter build apk --release
-```
-APK: `build/app/outputs/flutter-apk/app-release.apk`
+- Vehicle add, edit and delete with input validation and local SQLite persistence.
+- Foreground GPS trip recording while the app and trip screen remain active. GPS permission and location-service checks show actionable errors.
+- Trip history with saved vehicle, date, distance, estimated fuel use/cost, GPS point count, detail view and delete.
+- Fuel entry with date, odometer, litres, amount and full/partial fill-up selection.
+- Measured mileage using the full-tank method: odometer distance between consecutive full-tank records divided by all litres added between those records (including partial fill-ups).
+- Dashboard shows measured full-tank mileage, saved GPS trip distance, recorded fuel expenses and vehicle count.
+- Bluetooth LE device discovery screen. It lists nearby BLE advertisements and RSSI; this is discovery only, not a paired OBD connection or live ECU data reader.
+- Material icons are provided by Flutter's bundled Material icon font (`uses-material-design: true`).
+- SQLite schema version 2 adds query indexes while retaining existing records.
 
-## Android project generation
-This repository contains Flutter application source. Generate the platform host using:
-```bash
-flutter create . --platforms=android
-```
-Then merge the location permissions from `android/README_ANDROID_SETUP.md` into the generated AndroidManifest.xml.
+## Physical testing steps
 
-## Google Maps
-Add a Google Maps Android SDK API key in the generated `android/app/src/main/AndroidManifest.xml`:
-```xml
-<meta-data android:name="com.google.android.geo.API_KEY" android:value="YOUR_API_KEY"/>
-```
-Do not commit a production key. Configure it using GitHub Actions secrets / a local untracked secrets file.
+1. Install the release APK on a real Android phone.
+2. Add a vehicle (e.g. Honda CB350) and save it. Edit it and confirm the changes remain after closing/reopening the app.
+3. Enable Android Location/GPS. Start a trip outdoors with a clear sky view, allow location permission, keep the app open for a short test ride, then stop and save. Confirm distance is greater than zero and the trip appears in history.
+4. Open a trip to inspect its saved details. Trip fuel use/cost is explicitly an estimate based on the vehicle's reference km/L.
+5. Add a full-tank fuel record at an odometer reading. Add one or more partial records, then a second full-tank record at a higher odometer. The measured mileage should use the odometer difference divided by litres added after the first full tank through the second full tank.
+6. Open Vehicles → Scan Bluetooth devices, enable Bluetooth and grant Nearby devices permission. Test with a powered BLE device nearby. Classic Bluetooth-only devices may not appear in BLE scan results.
+7. Pull down on Home to refresh dashboard totals.
 
-## Current limitations — important
-This is a first Flutter implementation scaffold, not a production-ready migration:
-- GPS recording currently runs while the app's trip screen is active. Background tracking / foreground service is not implemented yet.
-- The trip route map requires a valid Google Maps API key.
-- Route coordinates are stored in a compact text field; consider normalized route-point storage for long trips.
-- Overall estimated mileage is computed from saved trip estimates. Full-tank measured mileage calculation across consecutive full fills is not wired into the dashboard yet.
-- OBD-II / Bluetooth integration, export, backup, route replay, and production signing are not implemented.
-- The first GPS prototype should be tested on a physical Android phone; GPS filtering, pause/resume, app-kill recovery and battery optimization handling need further work.
-- No signed production key is included. GitHub Actions currently creates an unsigned release APK suitable for installation/testing only after allowing installation from unknown sources; Play Store publishing requires secure signing setup.
+## Important limitations (not represented as complete)
 
-## Calculation model
-For each trip:
-- estimated fuel litres = trip distance / vehicle reference mileage
-- estimated trip fuel cost = estimated fuel litres × vehicle fuel price
-- trip stores a snapshot of reference mileage and fuel price
-
-Dashboard overall estimated mileage:
-- sum of saved trip distances / sum of saved estimated fuel litres
-
-This estimate is not actual measured fuel economy. Actual measured mileage should use consecutive full-tank odometer records.
-
-
-## v1.0.1 build correction
-Fixed a missing closing parenthesis in the fuel-entry dialog (`fuel_screen.dart`) that caused `flutter analyze` to stop with `expected token`. The remaining `material.dart` notices in the reported workflow are deprecation notices, not the syntax failure shown in the screenshot.
-
-\n## v1.0.2 GitHub analyzer compatibility\nThe GitHub workflow runs `flutter analyze --no-fatal-infos`. The current Flutter stable channel reports the Material library imports as informational deprecations; these are not Dart syntax errors. The analyzer still reports errors and warnings as failures, while informational notices no longer block the test and APK build stages.\n
-\n## v1.0.3 widget test correction\nThe smoke test no longer assumes each navigation label is represented by exactly one text node. Flutter's NavigationBar can expose labels through multiple text/semantics nodes depending on SDK version. The test now checks app startup, the main navigation widget and app title.\n
-\n## v1.0.4 widget-test SQLite setup\nThe widget test now initializes `sqflite_common_ffi` and assigns `databaseFactoryFfi` before mounting the app. This is required because GitHub's Flutter test runner is a host environment and does not provide the Android/iOS native sqflite platform channel. Production Android continues using the regular `sqflite` plugin.\n
-\n## v1.0.5 Android v2 embedding build fix\nThe GitHub workflow now generates the Android host using the installed Flutter stable SDK before building. This creates the current Android embedding (v2) Gradle project instead of relying on an absent/incomplete Android host. It also configures internet and foreground location permissions and sets the Android app label to Bike Mileage Pro. The generated host is build-time output in CI; the Flutter source ZIP remains portable.\n\nThe map screen still requires a Google Maps Android API key to show map tiles at runtime. Background location/foreground service is not included in this initial foreground GPS implementation.\n
+- GPS tracking in this version is foreground-only. Keep the app open and trip screen active during physical testing. It does not claim reliable tracking after the app is backgrounded or killed.
+- Bluetooth scan discovers BLE devices only. It does not pair, connect to, or decode ELM327/OBD-II vehicle telemetry.
+- Map display is intentionally excluded per request.
+- This source ZIP has not been compiled on a Flutter SDK in this environment. GitHub Actions must pass `flutter pub get`, `flutter analyze`, `flutter test`, and `flutter build apk --release` before treating the APK as build-verified.

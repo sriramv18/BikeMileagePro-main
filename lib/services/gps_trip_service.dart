@@ -14,7 +14,7 @@ class GpsTripService {
     }
     var permission=await Geolocator.checkPermission();
     if(permission==LocationPermission.denied) permission=await Geolocator.requestPermission();
-    if(permission==LocationPermission.denied || permission==LocationPermission.deniedForever) {
+    if(permission==LocationPermission.denied || permission==LocationPermission.deniedForever || permission==LocationPermission.unableToDetermine) {
       throw Exception('Location permission is required to record a trip.');
     }
     points.clear(); distanceKm=0; _previous=null;
@@ -23,7 +23,7 @@ class GpsTripService {
       final previous=_previous;
       if(previous!=null) {
         final delta=Geolocator.distanceBetween(previous.latitude,previous.longitude,pos.latitude,pos.longitude)/1000;
-        if(delta>0 && delta<1) distanceKm+=delta;
+        if(delta>0 && delta<0.5) distanceKm+=delta;
       }
       _previous=pos;
       points.add({'lat':pos.latitude,'lng':pos.longitude});
