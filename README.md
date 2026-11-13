@@ -1,32 +1,45 @@
-# Bike Mileage Pro – Flutter functional update
+# Bike Mileage Pro — Native Android v0.5.0
 
-This update prioritizes vehicle, GPS trip, fuel/mileage and Bluetooth LE discovery. Map rendering has been removed from the app flow as requested; saved trip GPS points remain stored locally for future use.
+This is the native Android Kotlin + Jetpack Compose project. The Flutter experiment is discontinued; use this project as the active Android codebase.
 
-## Implemented in this update
+## Included functionality
+- Native Jetpack Compose dark UI with working Material icons and bottom navigation.
+- Dashboard with full-tank overall mileage, trip distance, fuel spend, odometer and mileage trend chart.
+- Editable single-vehicle profile (name, year, registration, variant/colour and odometer).
+- Phone GPS trip tracking through an Android foreground location service and persistent notification.
+- Live trip distance, speed and elapsed duration updates while the service is running.
+- Saved trip history in native SQLite.
+- Fuel entry form with date, odometer, litres, amount and full/partial tank selection.
+- Actual full-tank mileage intervals using odometer difference divided by fuel added between consecutive full-tank records; partial fills are included in the interval fuel total.
+- Nearby Bluetooth Low Energy scan and device discovery.
+- GitHub Actions workflow to build and upload an installable debug APK.
 
-- Vehicle add, edit and delete with input validation and local SQLite persistence.
-- Foreground GPS trip recording while the app and trip screen remain active. GPS permission and location-service checks show actionable errors.
-- Trip history with saved vehicle, date, distance, estimated fuel use/cost, GPS point count, detail view and delete.
-- Fuel entry with date, odometer, litres, amount and full/partial fill-up selection.
-- Measured mileage using the full-tank method: odometer distance between consecutive full-tank records divided by all litres added between those records (including partial fill-ups).
-- Dashboard shows measured full-tank mileage, saved GPS trip distance, recorded fuel expenses and vehicle count.
-- Bluetooth LE device discovery screen. It lists nearby BLE advertisements and RSSI; this is discovery only, not a paired OBD connection or live ECU data reader.
-- Material icons are provided by Flutter's bundled Material icon font (`uses-material-design: true`).
-- SQLite schema version 2 adds query indexes while retaining existing records.
+## Important feature boundaries
+- Bluetooth currently scans/discovers BLE devices. It does not yet pair with an ELM327 device or decode live ECU/PID values.
+- Vehicle profile is currently one editable profile, not multi-vehicle management.
+- Trip history stores trip summary (date, distance, maximum speed and duration). Route-point history/map replay is not implemented in this native baseline.
+- GPS requires location permission and phone Location/GPS enabled. The app uses a foreground service while a ride is active; test notification visibility and screen-locked recording on the target phone.
+- Mileage from full-tank records is most reliable when each interval begins and ends with a consistently filled tank, using the same pump and automatic cut-off.
 
-## Physical testing steps
+## Build in GitHub Actions
+1. Upload the contents of this folder to the repository root (not the enclosing folder).
+2. Push to `main` or `master`, or manually run **Build Bike Mileage Pro Native Android APK**.
+3. Download artifact `BikeMileagePro-Native-Kotlin-v0.5.0-debug` from a successful Actions run.
 
-1. Install the release APK on a real Android phone.
-2. Add a vehicle (e.g. Honda CB350) and save it. Edit it and confirm the changes remain after closing/reopening the app.
-3. Enable Android Location/GPS. Start a trip outdoors with a clear sky view, allow location permission, keep the app open for a short test ride, then stop and save. Confirm distance is greater than zero and the trip appears in history.
-4. Open a trip to inspect its saved details. Trip fuel use/cost is explicitly an estimate based on the vehicle's reference km/L.
-5. Add a full-tank fuel record at an odometer reading. Add one or more partial records, then a second full-tank record at a higher odometer. The measured mileage should use the odometer difference divided by litres added after the first full tank through the second full tank.
-6. Open Vehicles → Scan Bluetooth devices, enable Bluetooth and grant Nearby devices permission. Test with a powered BLE device nearby. Classic Bluetooth-only devices may not appear in BLE scan results.
-7. Pull down on Home to refresh dashboard totals.
+## Build locally
+Install JDK 17, Android SDK and Gradle 8.9, then run from the project root:
 
-## Important limitations (not represented as complete)
+```bash
+gradle --no-daemon clean assembleDebug
+```
 
-- GPS tracking in this version is foreground-only. Keep the app open and trip screen active during physical testing. It does not claim reliable tracking after the app is backgrounded or killed.
-- Bluetooth scan discovers BLE devices only. It does not pair, connect to, or decode ELM327/OBD-II vehicle telemetry.
-- Map display is intentionally excluded per request.
-- This source ZIP has not been compiled on a Flutter SDK in this environment. GitHub Actions must pass `flutter pub get`, `flutter analyze`, `flutter test`, and `flutter build apk --release` before treating the APK as build-verified.
+APK output: `app/build/outputs/apk/debug/app-debug.apk`.
+
+## Physical test checklist
+1. Install the APK and grant Location and Nearby devices permissions when requested.
+2. Enable phone Location/GPS.
+3. Start a trip, lock the screen for several minutes, unlock, then stop and verify the saved distance/duration.
+4. Add two full-tank entries with increasing odometer readings; add any partial fills between them. Verify the mileage interval on the later full-tank record and dashboard.
+5. Enable Bluetooth and scan with a powered BLE device nearby.
+
+The source ZIP is not represented as a verified APK. A successful GitHub Actions build and physical-device test are still required.
