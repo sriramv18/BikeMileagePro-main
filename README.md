@@ -34,3 +34,8 @@ The mileage calculation service is included in `mobile/src/services/tripMileage.
 - Saved snapshots are not recalculated when the vehicle's reference mileage or fuel price changes later.
 
 **Important limitation:** this ZIP is still a UI starter. GPS tracking, completed-trip persistence, vehicle reference-mileage setup, fuel-price entry and connecting the calculation service to the live trip-completion flow are not yet implemented. The calculation logic is ready, but live trip and dashboard figures will not populate until those data flows are completed. Estimated mileage is not actual measured fuel efficiency.
+
+
+## GitHub Actions manifest parsing fix
+
+The release workflow now sets `android:icon` and `android:roundIcon` through an XML parser, making the update idempotent and preventing duplicate attributes. Adaptive icon XML is placed only under `mipmap-anydpi-v26`, where Android expects it.

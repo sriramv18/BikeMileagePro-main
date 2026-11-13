@@ -51,9 +51,7 @@ jobs:
           APP=BikeMileagePro/android/app/src/main
           mkdir -p "$APP/res/drawable"
           mkdir -p "$APP/res/mipmap-anydpi-v26"
-          mkdir -p "$APP/res/mipmap-anydpi"
-          cp android-template-resources/res/mipmap-anydpi/ic_launcher.xml "$APP/res/mipmap-anydpi/ic_launcher.xml"
-          cp android-template-resources/res/mipmap-anydpi/ic_launcher_round.xml "$APP/res/mipmap-anydpi/ic_launcher_round.xml"
+          # Adaptive icon XML must live only in the API 26+ resource directory.
           python3 - <<'PY'
           from pathlib import Path
           p=Path('BikeMileagePro/android/app/src/main/res/values/strings.xml')
@@ -86,13 +84,23 @@ jobs:
               <foreground android:drawable="@drawable/ic_launcher_foreground" />
           </adaptive-icon>
           XML_EOF
-          # Ensure the generated manifest uses the launcher icon resources.
+          # Set icon attributes idempotently; avoid duplicate XML attributes.
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('BikeMileagePro/android/app/src/main/AndroidManifest.xml')
-          s=p.read_text()
-          s=s.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"')
-          p.write_text(s)
+          import xml.etree.ElementTree as ET
+          ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+          p = Path('BikeMileagePro/android/app/src/main/AndroidManifest.xml')
+          tree = ET.parse(p)
+          root = tree.getroot()
+          app = root.find('application')
+          if app is None:
+              raise SystemExit('AndroidManifest.xml has no <application> element')
+          ns = '{http://schemas.android.com/apk/res/android}'
+          app.set(ns + 'icon', '@mipmap/ic_launcher')
+          app.set(ns + 'roundIcon', '@mipmap/ic_launcher_round')
+          tree.write(p, encoding='utf-8', xml_declaration=True)
+          # Parse again so malformed XML fails before Gradle starts.
+          ET.parse(p)
           PY
 
       - name: Build release APK (bundles JavaScript into the APK)
