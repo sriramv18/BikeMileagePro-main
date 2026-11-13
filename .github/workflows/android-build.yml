@@ -1,0 +1,63 @@
+name: SR Mobility Labs - Bike Mileage Pro Android APK
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-debug:
+    name: Generate and build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # This repository keeps the React Native app source in /mobile.
+      # The native Android host is generated on the GitHub runner.
+      - name: Generate React Native Android host
+        run: |
+          npx --yes @react-native-community/cli@latest init SRMobilityLabs --skip-install
+          cp -R mobile/src SRMobilityLabs/src
+          cp mobile/tsconfig.json SRMobilityLabs/tsconfig.json
+          cat > SRMobilityLabs/App.tsx <<'EOF'
+          export { default } from './src/App';
+          EOF
+
+      - name: Install app dependencies
+        working-directory: SRMobilityLabs
+        run: |
+          npm install
+          npm install @react-navigation/native@^7 @react-navigation/bottom-tabs@^7 react-native-safe-area-context@^5 react-native-screens@^4
+
+      - name: Build debug APK
+        working-directory: SRMobilityLabs/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bike-Mileage-Pro-debug-APK
+          path: SRMobilityLabs/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

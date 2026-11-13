@@ -1,21 +1,38 @@
-# Bike Mileage Pro v0.4.0 — Premium Compose UI
+# SR Mobility Labs — Bike Mileage Pro
 
-Native Android app using Kotlin, Jetpack Compose and Material 3 with a premium dark navy + teal visual theme.
+React Native app source and GitHub Actions Android debug-APK workflow.
 
-## Screens
-- Dashboard: overall full-tank km/L, total GPS trip distance, fuel spend, last odometer, mileage trend chart and live trip snapshot.
-- Vehicle: editable Honda H’ness CB350 DLX Pro profile and nearby BLE discovery.
-- Trips: foreground GPS tracking, live distance/speed/duration and saved trip history.
-- Fuel: fill-up date, odometer, litres, amount, full/partial tank and fill-up history.
+## Build APK on GitHub
 
-## Mileage calculation
-Mileage is calculated between consecutive full-tank entries using the odometer distance divided by litres added at the current full-tank refill. Keep the same pump and stop at the automatic cut-off for best consistency. Partial fills are stored but excluded as mileage intervals.
+1. Create or open your GitHub repository.
+2. Upload/commit the contents of this folder to the repository root.
+3. Ensure the default branch is `main` (or `master`).
+4. Open **Actions** → **SR Mobility Labs - Bike Mileage Pro Android APK**.
+5. Select **Run workflow** for a manual build, or push a commit to `main`.
+6. When the run succeeds, open the run → **Artifacts** → download `Bike-Mileage-Pro-debug-APK`.
+7. Extract the ZIP artifact; it contains `app-debug.apk`.
 
-## GPS
-Trip tracking uses phone GPS and a foreground location service. GPS distance/speed are estimates and can differ from the motorcycle odometer. Allow location permission and enable GPS.
+## What this workflow does
 
-## Bluetooth limitation
-The app currently discovers nearby BLE advertisements only. It does not yet read Honda ECU values. Live ECU data requires a compatible diagnostic adapter, confirmed pinout/protocol for the exact motorcycle, and an implemented adapter protocol.
+- Checks out the repository.
+- Sets up Node.js 22 and Java 17.
+- Generates a fresh React Native Android host project on the GitHub runner.
+- Copies the app source from `mobile/src`.
+- Installs React Navigation dependencies.
+- Runs `./gradlew assembleDebug`.
+- Uploads the APK as a 14-day workflow artifact.
 
-## Build
-Push to main/master or manually run the GitHub Actions workflow. Download the `BikeMileagePro-v0.4.0-premium-debug-apk` artifact from a successful run.
+The Android host is generated during CI, so you do not need to commit a generated `android/` folder for this starter workflow.
+
+## Important scope and limitations
+
+This is a **buildable React Native UI starter**, not a completed migration of every native Android feature. GPS foreground tracking, persistent trip/fuel database, route maps, date picker forms, OBD-II/Bluetooth protocol integration, cloud sync, subscriptions, production signing, iOS host, app icon and splash screen still need implementation and device testing. The current Trips screen includes starter UI/state logic only.
+
+The APK produced by this workflow is a debug build for testing. A Play Store release requires a signed release build and secure signing secrets.
+
+## Repository layout
+
+- `.github/workflows/android-build.yml` — CI build workflow
+- `mobile/src/` — React Native screens, services and app entry
+- `mobile/tsconfig.json` — TypeScript config
+- `docs/` — feature matrix and native integration notes
