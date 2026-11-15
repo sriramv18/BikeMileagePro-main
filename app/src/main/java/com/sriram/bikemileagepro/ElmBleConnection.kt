@@ -195,7 +195,7 @@ class ElmBleConnection(
                     year = "2026",
                     reg = "",
                     variant = "BLE Connected",
-                    odometer = "0"
+                    odo = "0" // Fixed from 'odometer' to 'odo'
                 )
             }
         } catch (_: Exception) {}

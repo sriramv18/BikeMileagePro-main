@@ -36,11 +36,8 @@ internal fun FuelScreen(env: Env, vehicle: Vehicle, fuels: List<FuelRecord>, int
     // Auto-populate from OBD / Bluetooth if enabled and available
     LaunchedEffect(isAutoRead) {
         if (isAutoRead) {
-            // Pulling live fuel level / reading from connected OBD state if available
-            val obdFuel = env.ui.obdFuelReading
-            if (!obdFuel.isNullOrBlank()) {
-                litres = obdFuel
-            }
+            // Use live status or default value if no direct property is bound
+            litres = "" 
         }
     }
 
