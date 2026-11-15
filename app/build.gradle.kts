@@ -12,7 +12,7 @@ android {
         applicationId = "com.sriram.bikemileagepro"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
+        versionCode = 13
         versionName = "1.0.2"
     }
 
@@ -35,5 +35,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("junit:junit:4.13.2")
 }

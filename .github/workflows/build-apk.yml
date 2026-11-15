@@ -32,6 +32,8 @@ jobs:
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/sriram/bikemileagepro/MainActivity.kt
           test -f app/src/main/java/com/sriram/bikemileagepro/RideTrackingService.kt
+          test -f app/src/main/java/com/sriram/bikemileagepro/ActiveTripStore.kt
+          test -f app/src/main/java/com/sriram/bikemileagepro/ElmBleConnection.kt
           grep -q 'versionName = "1.0.2"' app/build.gradle.kts
           grep -q 'android:foregroundServiceType="location"' app/src/main/AndroidManifest.xml
 
@@ -45,3 +47,6 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Run unit tests (mileage maths and route codec)
+        run: gradle --no-daemon testDebugUnitTest
