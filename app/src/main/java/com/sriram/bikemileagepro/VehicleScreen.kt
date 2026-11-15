@@ -25,7 +25,8 @@ internal fun VehicleScreen(
 ) {
     var showAdd by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    // Edit form is keyed on the selected vehicle so switching vehicle reloads the fields.
+    
+    // Edit form state keyed on selected vehicle ID
     var name by remember(selected.id) { mutableStateOf(selected.name) }
     var year by remember(selected.id) { mutableStateOf(selected.year) }
     var reg by remember(selected.id) { mutableStateOf(selected.reg) }

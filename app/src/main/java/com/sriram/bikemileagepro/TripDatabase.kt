@@ -6,8 +6,12 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 data class Vehicle(
-    val id: Long, val name: String, val year: String, val reg: String,
-    val variant: String, val odometer: String
+   val id: Long,
+    val name: String,
+    val year: String,
+    val reg: String,
+    val variant: String,
+    val odometer: String
 )
 
 data class TripRecord(
