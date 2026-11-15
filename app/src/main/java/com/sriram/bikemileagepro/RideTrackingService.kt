@@ -82,10 +82,19 @@ class RideTrackingService : Service(), LocationListener {
 
     override fun onLocationChanged(location: Location) {
         if (!started) return
+        // Reject poor GPS fixes before using them as the next distance anchor.
+        // This prevents a low-quality point from creating a large jump on the next update.
+        if (!location.hasAccuracy() || location.accuracy > 35f) return
+
         val old = previous
-        if (old != null && location.hasAccuracy() && location.accuracy <= 35f) {
+        if (old != null) {
+            val elapsedSeconds = ((location.time - old.time).coerceAtLeast(1L)) / 1000.0
             val segment = old.distanceTo(location)
-            if (segment in 2f..250f) distanceKm += segment / 1000.0
+            val plausibleSpeed = segment / elapsedSeconds
+            // Ignore GPS spikes: at most 250 m between 1-second-ish fixes and 70 m/s.
+            if (segment in 2f..250f && plausibleSpeed <= 70.0) {
+                distanceKm += segment / 1000.0
+            }
         }
         previous = location
         val speed = if (location.hasSpeed()) location.speed * 3.6 else 0.0

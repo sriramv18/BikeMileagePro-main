@@ -1,6 +1,7 @@
 package com.sriram.bikemileagepro
 
 import android.Manifest
+import android.app.Activity
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Timeline
@@ -262,14 +264,22 @@ private fun MileageApp(
                     onOpenTrips = { selected = Screen.TRIPS }
                 )
                 Screen.VEHICLE -> VehicleScreen(getVehicle, saveVehicle, bluetoothStatus, onScanBluetooth)
-                Screen.TRIPS -> TripsScreen(trips, liveDistance, liveSpeed, liveMinutes, onStartRide, onStopRide)
-                Screen.FUEL -> FuelScreen(fuels, onSave = { date, odo, litres, amount, full ->
-                    val validation = db.validateFuelEntry(odo, litres, amount)
-                    if (validation != null) return@FuelScreen validation
-                    db.saveFuel(date, litres, amount, odo, full)
-                    refresh++
-                    null
-                })
+                Screen.TRIPS -> TripsScreen(
+                    trips, liveDistance, liveSpeed, liveMinutes, onStartRide, onStopRide,
+                    onDelete = { id -> db.deleteTrip(id); refresh++ }
+                )
+                Screen.FUEL -> FuelScreen(
+                    fuels,
+                    mileageByFuelId = fuels.associate { it.id to db.mileageForFuelEntry(it.id) },
+                    onSave = { date, odo, litres, amount, full ->
+                        val validation = db.validateFuelEntry(litres, amount, odo)
+                        if (validation != null) return@FuelScreen validation
+                        db.saveFuel(date, litres, amount, odo, full)
+                        refresh++
+                        null
+                    },
+                    onDelete = { id -> db.deleteFuel(id); refresh++ }
+                )
             }
         }
     }
@@ -309,7 +319,10 @@ private fun DashboardScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Your ride, measured.", color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text(listOf(vehicleName, vehicleVariant, vehicleYear).filter { it.isNotBlank() }.joinToString(" · "), color = Muted, fontSize = 12.sp)
+                    Text(
+                        listOf(vehicleName, vehicleVariant, vehicleYear).filter { it.isNotBlank() }.joinToString(" · "),
+                        color = Muted, fontSize = 12.sp
+                    )
                 }
                 Surface(color = Color(0xFF153B3B), shape = RoundedCornerShape(50)) {
                     Text("● READY", Modifier.padding(horizontal = 11.dp, vertical = 7.dp), color = Teal, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -501,8 +514,9 @@ private fun VehicleScreen(
 @Composable
 private fun TripsScreen(
     trips: List<TripRecord>, liveDistance: Double, liveSpeed: Double, liveMinutes: Int,
-    onStart: () -> Unit, onStop: () -> Unit
+    onStart: () -> Unit, onStop: () -> Unit, onDelete: (Long) -> Unit
 ) {
+    var selectedTrip by remember { mutableStateOf<TripRecord?>(null) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             SectionTitle("Ride tracking", "GPS-based trip distance and speed estimate.")
@@ -536,7 +550,7 @@ private fun TripsScreen(
         if (trips.isEmpty()) item { EmptyState("No trips recorded yet", "Start a ride to build your daily travel history.") }
         items(trips, key = { it.id }) { trip ->
             Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
-                Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().clickable { selectedTrip = trip }.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF1A3A45)), contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Route, tint = Teal, contentDescription = null)
                     }
@@ -544,27 +558,42 @@ private fun TripsScreen(
                     Column(Modifier.weight(1f)) {
                         Text(trip.date, color = White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         Text("Max ${trip.maxSpeed.toInt()} km/h · ${trip.durationMinutes} min", color = Muted, fontSize = 11.sp)
+                        Text("Tap for trip details", color = Teal, fontSize = 10.sp)
                     }
-                    Text(String.format(Locale.US, "%.2f km", trip.distanceKm), color = Teal, fontWeight = FontWeight.Bold)
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(String.format(Locale.US, "%.2f km", trip.distanceKm), color = Teal, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { onDelete(trip.id) }) { Text("DELETE", color = Orange, fontSize = 10.sp) }
+                    }
                 }
             }
         }
     }
-}
-
-private fun dbMileageForEntry(entries: List<FuelRecord>, fuelId: Long): Double? {
-    val current = entries.indexOfFirst { it.id == fuelId }
-    if (current < 0 || !entries[current].fullTank) return null
-    val previous = (current - 1 downTo 0).firstOrNull { entries[it].fullTank } ?: return null
-    val km = entries[current].odometerKm - entries[previous].odometerKm
-    val litres = entries.subList(previous + 1, current + 1).sumOf { it.litres }
-    return if (km > 0.0 && litres > 0.0) km / litres else null
+    selectedTrip?.let { trip ->
+        AlertDialog(
+            onDismissRequest = { selectedTrip = null },
+            containerColor = Panel,
+            title = { Text("Trip details", color = White, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(trip.date, color = Muted)
+                    Text(String.format(Locale.US, "Distance: %.2f km", trip.distanceKm), color = White)
+                    Text(String.format(Locale.US, "Maximum speed: %.1f km/h", trip.maxSpeed), color = White)
+                    Text("Duration: ${trip.durationMinutes} minutes", color = White)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedTrip = null }) { Text("CLOSE", color = Teal) }
+            }
+        )
+    }
 }
 
 @Composable
 private fun FuelScreen(
     fuels: List<FuelRecord>,
-    onSave: (String, Double, Double, Double, Boolean) -> String?
+    mileageByFuelId: Map<Long, Double?>,
+    onSave: (String, Double, Double, Double, Boolean) -> String?,
+    onDelete: (Long) -> Unit
 ) {
     var date by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())) }
     var odo by remember { mutableStateOf("") }
@@ -612,10 +641,7 @@ private fun FuelScreen(
         item { SectionTitle("Fill-up history", "${fuels.size} recorded entries") }
         if (fuels.isEmpty()) item { EmptyState("No fuel entries yet", "Add your last petrol fill-up and odometer reading.") }
         items(fuels.asReversed(), key = { it.id }) { fuel ->
-            val intervalMileage = if (fuel.fullTank) {
-                // Database calculation includes partial fill-ups between full tanks.
-                fuels.firstOrNull { it.id == fuel.id }?.let { dbMileageForEntry(fuels, it.id) }
-            } else null
+            val previous = fuels.lastOrNull { it.id < fuel.id && it.fullTank && fuel.fullTank && it.odometerKm > fuel.odometerKm }
             Surface(color = Panel, shape = RoundedCornerShape(17.dp)) {
                 Column(Modifier.fillMaxWidth().padding(15.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -627,9 +653,12 @@ private fun FuelScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(String.format(Locale.US, "%.2f L filled", fuel.litres), color = White, fontSize = 12.sp)
-                    if (intervalMileage != null) {
-                        Text(String.format(Locale.US, "Actual mileage interval: %.2f km/L", intervalMileage),
+                    mileageByFuelId[fuel.id]?.let { interval ->
+                        Text(String.format(Locale.US, "Actual interval mileage: %.2f km/L", interval),
                             color = Green, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                    TextButton(onClick = { onDelete(fuel.id) }) {
+                        Text("DELETE ENTRY", color = Orange, fontSize = 10.sp)
                     }
                 }
             }

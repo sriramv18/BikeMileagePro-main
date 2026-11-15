@@ -32,17 +32,16 @@ jobs:
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/sriram/bikemileagepro/MainActivity.kt
           test -f app/src/main/java/com/sriram/bikemileagepro/RideTrackingService.kt
+          grep -q 'versionName = "1.0.2"' app/build.gradle.kts
+          grep -q 'android:foregroundServiceType="location"' app/src/main/AndroidManifest.xml
 
       - name: Build debug APK
         run: gradle --no-daemon clean assembleDebug
 
-      - name: Verify APK output
-        run: test -s app/build/outputs/apk/debug/app-debug.apk
-
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: BikeMileagePro-Native-Kotlin-v1.0.0-debug
+          name: BikeMileagePro-Native-Kotlin-v1.0.2-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30

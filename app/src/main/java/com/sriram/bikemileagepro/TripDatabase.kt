@@ -43,11 +43,30 @@ class TripDatabase(context: Context) :
         }
     }
 
+    fun deleteTrip(id: Long) {
+        writableDatabase.delete("trips", "id = ?", arrayOf(id.toString()))
+    }
+
+    fun deleteFuel(id: Long) {
+        writableDatabase.delete("fuel", "id = ?", arrayOf(id.toString()))
+    }
+
     fun saveTrip(date: String, km: Double, maxSpeed: Double, durationMinutes: Int = 0) {
         writableDatabase.insert("trips", null, ContentValues().apply {
             put("date", date); put("distance_km", km); put("max_speed", maxSpeed)
             put("duration_minutes", durationMinutes)
         })
+    }
+
+    fun validateFuelEntry(litres: Double, amount: Double, odometer: Double): String? {
+        if (!litres.isFinite() || litres <= 0.0) return "Fuel quantity must be greater than zero."
+        if (!amount.isFinite() || amount < 0.0) return "Enter a valid fuel amount."
+        if (!odometer.isFinite() || odometer < 0.0) return "Enter a valid odometer reading."
+        val latest = fuels().lastOrNull()
+        if (latest != null && odometer <= latest.odometerKm) {
+            return "Odometer must be greater than the previous entry (${latest.odometerKm} km)."
+        }
+        return null
     }
 
     fun saveFuel(date: String, litres: Double, amount: Double, odometer: Double, fullTank: Boolean) {
@@ -96,8 +115,6 @@ class TripDatabase(context: Context) :
         return points
     }
 
-    /** Actual interval mileage for a full-tank entry. Includes every partial fill
-     * after the previous full tank and the current full-tank fill itself. */
     fun mileageForFuelEntry(fuelId: Long): Double? {
         val entries = fuels()
         val currentIndex = entries.indexOfFirst { it.id == fuelId }
@@ -106,19 +123,6 @@ class TripDatabase(context: Context) :
         val km = entries[currentIndex].odometerKm - entries[previousIndex].odometerKm
         val litres = entries.subList(previousIndex + 1, currentIndex + 1).sumOf { it.litres }
         return if (km > 0.0 && litres > 0.0) km / litres else null
-    }
-
-    /** Fuel entries are ordered by odometer, and an interval is valid only
-     * when the odometer increases and two consecutive full-tank records exist. */
-    fun validateFuelEntry(odometerKm: Double, litres: Double, amount: Double): String? {
-        if (!odometerKm.isFinite() || odometerKm < 0.0) return "Enter a valid odometer reading."
-        if (!litres.isFinite() || litres <= 0.0) return "Fuel quantity must be greater than zero."
-        if (!amount.isFinite() || amount < 0.0) return "Enter a valid fuel amount."
-        val latest = fuels().lastOrNull()
-        if (latest != null && odometerKm <= latest.odometerKm) {
-            return "Odometer must be greater than the previous entry (${latest.odometerKm} km)."
-        }
-        return null
     }
 
     fun overallMileage(): Double {
@@ -139,6 +143,14 @@ class TripDatabase(context: Context) :
         return if (litresTotal > 0.0) kmTotal / litresTotal else 0.0
     }
 
-    fun totalFuelSpend(): Double = fuels().sumOf { it.amount }
-    fun totalTripDistance(): Double = trips().sumOf { it.distanceKm }
+    fun totalFuelSpend(): Double {
+        val cursor = readableDatabase.rawQuery("SELECT COALESCE(SUM(amount), 0) FROM fuel", null)
+        return cursor.use { if (it.moveToFirst()) it.getDouble(0) else 0.0 }
+    }
+
+    /** Aggregate all saved trips; trips() is intentionally limited for the history UI. */
+    fun totalTripDistance(): Double {
+        val cursor = readableDatabase.rawQuery("SELECT COALESCE(SUM(distance_km), 0) FROM trips", null)
+        return cursor.use { if (it.moveToFirst()) it.getDouble(0) else 0.0 }
+    }
 }
