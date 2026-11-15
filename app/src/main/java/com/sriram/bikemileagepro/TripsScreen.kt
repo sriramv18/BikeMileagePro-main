@@ -44,6 +44,10 @@ internal fun TripsScreen(
         env.db.vehicles().firstOrNull { it.id == live.vehicleId }?.name ?: ""
     }
 
+    // Connection checks for enabling trip start
+    val isLocationReady = ui.hasLocationPermission && ui.locationEnabled
+    val isBluetoothConnected = ui.obdState == ObdState.ECU_READY || ui.obdState == ObdState.ADAPTER_READY
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             SectionTitle("Ride tracking", "GPS distance, route and speed for ${vehicle.name}.")
@@ -54,7 +58,7 @@ internal fun TripsScreen(
                 Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("CONNECTION STATUS", color = Muted, fontSize = 10.sp, letterSpacing = 1.4.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (ui.hasLocationPermission && ui.locationEnabled) StatusChip("GPS READY", Green)
+                        if (isLocationReady) StatusChip("GPS READY", Green)
                         else StatusChip(if (!ui.hasLocationPermission) "GPS PERMISSION OFF" else "GPS OFF", Red)
                         obdChip(ui.obdState)
                     }
@@ -64,11 +68,11 @@ internal fun TripsScreen(
                             ObdState.ADAPTER_READY -> "OBD adapter ${ui.connectedName} is connected, but the ECU gave no OBD-II data. Trips use GPS distance."
                             ObdState.CONNECTING, ObdState.DISCOVERING -> ui.obdMessage
                             ObdState.ERROR -> ui.obdMessage
-                            ObdState.DISCONNECTED -> "No OBD adapter connected. Trips are recorded with GPS only."
+                            ObdState.DISCONNECTED -> "No OBD adapter connected. Connect via Bluetooth to enable trip start."
                         },
                         color = Muted, fontSize = 11.sp
                     )
-                    if (ui.obdState == ObdState.DISCONNECTED || ui.obdState == ObdState.ERROR) {
+                    if (!isBluetoothConnected) {
                         TextButton(onClick = onOpenVehicle, contentPadding = PaddingValues(0.dp)) {
                             Text("CONNECT AN ADAPTER (VEHICLE TAB) →", color = Teal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
@@ -108,13 +112,27 @@ internal fun TripsScreen(
                         if (live.lastLat != null) Text("Now: " + GeoNames.coords(live.lastLat, live.lastLon), color = Muted, fontSize = 11.sp)
                     }
                     Spacer(Modifier.height(18.dp))
+                    
+                    // Button state rules: Start enabled ONLY if Location & Bluetooth are ready
                     when (live.state) {
                         TripState.IDLE -> Button(
-                            onClick = { env.actions.startTrip(vehicle.id) }, modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Ink)
+                            onClick = { env.actions.startTrip(vehicle.id) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = isLocationReady && isBluetoothConnected,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Teal,
+                                contentColor = Ink,
+                                disabledContainerColor = Color(0xFF152935)
+                            )
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Text("START TRIP", fontWeight = FontWeight.Bold)
+                            Text(
+                                if (!isBluetoothConnected && !isLocationReady) "GPS & BLUETOOTH REQUIRED"
+                                else if (!isBluetoothConnected) "BLUETOOTH OBD REQUIRED TO START"
+                                else if (!isLocationReady) "GPS REQUIRED TO START"
+                                else "START TRIP",
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                         TripState.RUNNING -> Button(
                             onClick = { env.actions.pauseTrip() }, modifier = Modifier.fillMaxWidth(),
@@ -132,21 +150,23 @@ internal fun TripsScreen(
                         }
                     }
                     if (live.state != TripState.IDLE) {
+                        Spacer(Modifier.height(8.dp))
                         OutlinedButton(onClick = { env.actions.stopTrip() }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.Stop, contentDescription = null, tint = Orange)
                             Text("STOP & SAVE TRIP", color = Orange)
                         }
                     }
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        "Tracking continues in a foreground service while the screen is off. The trip is stored as it goes, " +
-                            "so it can be resumed or saved if the app is closed.",
+                        "Tracking continues in a foreground service while the screen is off. " +
+                            "Requires active GPS location and a connected Bluetooth OBD adapter to begin.",
                         color = Muted, fontSize = 10.sp
                     )
                 }
             }
         }
         item { SectionTitle("Ride history", "Saved trips for ${vehicle.name}. Tap a trip for the route and mileage.") }
-        if (trips.isEmpty()) item { EmptyState("No trips recorded yet", "Start a ride to build your travel history.") }
+        if (trips.isEmpty()) item { EmptyState("No trips recorded yet", "Connect your Bluetooth adapter, ensure GPS is active, and start a ride.") }
         items(trips, key = { it.id }) { trip ->
             val m = tripMileage[trip.id]
             Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
@@ -190,7 +210,6 @@ private fun TripDetailDialog(env: Env, trip: TripRecord, mileage: TripMileage?, 
     var confirmDelete by remember(trip.id) { mutableStateOf(false) }
     val route = remember(trip.id) { RouteCodec.decode(trip.route) }
 
-    // Look up readable place names once (needs a geocoder + network); falls back to coordinates.
     LaunchedEffect(trip.id) {
         if ((startPlace.isBlank() && trip.startLat != null && trip.startLon != null) ||
             (endPlace.isBlank() && trip.endLat != null && trip.endLon != null)) {
@@ -218,7 +237,7 @@ private fun TripDetailDialog(env: Env, trip: TripRecord, mileage: TripMileage?, 
                 Text(trip.date, color = Muted)
                 if (route.isNotEmpty()) {
                     RouteMap(route)
-                    Text("● start   ● end  (route preview, no map key needed)", color = Muted, fontSize = 10.sp)
+                    Text("● start    ● end  (route preview, no map key needed)", color = Muted, fontSize = 10.sp)
                 } else {
                     Text("No route was recorded for this trip.", color = Muted, fontSize = 11.sp)
                 }

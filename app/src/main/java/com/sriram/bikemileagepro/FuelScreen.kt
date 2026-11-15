@@ -26,10 +26,23 @@ internal fun FuelScreen(env: Env, vehicle: Vehicle, fuels: List<FuelRecord>, int
     var litres by remember(vehicle.id) { mutableStateOf("") }
     var amount by remember(vehicle.id) { mutableStateOf("") }
     var fullTank by remember { mutableStateOf(true) }
+    var isAutoRead by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
+    
     val mileageByFuel = remember(intervals) { MileageCalc.mileageByFuelId(intervals) }
     val lastOdo = fuels.lastOrNull()?.odometerKm
+
+    // Auto-populate from OBD / Bluetooth if enabled and available
+    LaunchedEffect(isAutoRead) {
+        if (isAutoRead) {
+            // Pulling live fuel level / reading from connected OBD state if available
+            val obdFuel = env.ui.obdFuelReading
+            if (!obdFuel.isNullOrBlank()) {
+                litres = obdFuel
+            }
+        }
+    }
 
     val o = odo.replace(',', '.').toDoubleOrNull()
     val l = litres.replace(',', '.').toDoubleOrNull()
@@ -43,6 +56,17 @@ internal fun FuelScreen(env: Env, vehicle: Vehicle, fuels: List<FuelRecord>, int
             Surface(color = Panel, shape = RoundedCornerShape(22.dp)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("NEW FILL-UP", color = Teal, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.4.sp)
+                    
+                    // Bluetooth Auto-read Option Toggle
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = isAutoRead,
+                            onCheckedChange = { isAutoRead = it },
+                            colors = CheckboxDefaults.colors(checkedColor = Teal)
+                        )
+                        Text("Auto-read fuel from Bluetooth OBD", color = White, fontSize = 13.sp)
+                    }
+
                     DarkField("Date and time (yyyy-MM-dd HH:mm)", date, { date = it })
                     DarkField(
                         "Odometer reading (km)" + if (lastOdo != null) " — last: " + fmt(lastOdo, 0) else "",
@@ -50,14 +74,17 @@ internal fun FuelScreen(env: Env, vehicle: Vehicle, fuels: List<FuelRecord>, int
                     )
                     DarkField("Petrol filled (litres)", litres, { litres = it }, KeyboardType.Decimal)
                     DarkField("Total amount paid (₹)", amount, { amount = it }, KeyboardType.Decimal)
+                    
                     if (l != null && l > 0.0 && a != null && a > 0.0) {
                         Text("Price per litre: ₹" + fmt(a / l, 2), color = Muted, fontSize = 12.sp)
                     }
+                    
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = fullTank, onCheckedChange = { fullTank = it }, colors = CheckboxDefaults.colors(checkedColor = Teal))
                         Text("Tank filled to full", color = White, fontSize = 13.sp)
                     }
-                    // Live calculation so the rider can see exactly what will be calculated.
+
+                    // Live calculation preview
                     Surface(color = Color(0xFF0F2333), shape = RoundedCornerShape(14.dp)) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text("MILEAGE PREVIEW", color = Muted, fontSize = 9.sp, letterSpacing = 1.sp)
@@ -80,8 +107,10 @@ internal fun FuelScreen(env: Env, vehicle: Vehicle, fuels: List<FuelRecord>, int
                             }
                         }
                     }
+
                     error?.let { Text(it, color = Red, fontSize = 12.sp) }
                     savedMessage?.let { Text(it, color = Green, fontSize = 12.sp) }
+                    
                     Button(onClick = {
                         if (o == null || l == null || a == null || o < 0 || l <= 0 || a < 0) {
                             error = "Enter a valid odometer, litres and amount."
@@ -95,6 +124,7 @@ internal fun FuelScreen(env: Env, vehicle: Vehicle, fuels: List<FuelRecord>, int
                                 error = null
                                 savedMessage = "Fuel entry saved."
                                 odo = ""; litres = ""; amount = ""
+                                isAutoRead = false
                                 date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
                                 env.bump()
                             }
@@ -103,6 +133,7 @@ internal fun FuelScreen(env: Env, vehicle: Vehicle, fuels: List<FuelRecord>, int
                         Icon(Icons.Default.Add, contentDescription = null)
                         Text("SAVE FUEL ENTRY", fontWeight = FontWeight.Bold)
                     }
+                    
                     Text(
                         "Mileage = distance between two consecutive full-tank fills ÷ litres filled since the earlier one. " +
                             "Fill the tank to the same level each time for an accurate result.",

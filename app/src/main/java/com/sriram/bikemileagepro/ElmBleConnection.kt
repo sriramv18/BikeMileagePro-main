@@ -28,6 +28,7 @@ enum class ObdState { DISCONNECTED, CONNECTING, DISCOVERING, ADAPTER_READY, ECU_
  */
 class ElmBleConnection(
     context: Context,
+    private val db: TripDatabase? = null, // Added database dependency for auto-creating vehicle
     private val onState: (ObdState, String) -> Unit
 ) {
     private val appContext = context.applicationContext
@@ -39,6 +40,7 @@ class ElmBleConnection(
     private var current: String? = null
     private var ecuAnswered = false
     private var timeout: Runnable? = null
+    private var connectedDeviceName: String = ""
 
     private val knownServices = listOf(
         UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E"),
@@ -62,7 +64,8 @@ class ElmBleConnection(
     fun connect(device: BluetoothDevice) {
         teardown()
         val name = try { device.name } catch (_: SecurityException) { null }
-        report(ObdState.CONNECTING, "Connecting to ${name ?: device.address}…")
+        connectedDeviceName = name ?: "OBD Device"
+        report(ObdState.CONNECTING, "Connecting to $connectedDeviceName…")
         try {
             gatt = if (Build.VERSION.SDK_INT >= 23)
                 device.connectGatt(appContext, false, callback, BluetoothDevice.TRANSPORT_LE)
@@ -82,7 +85,7 @@ class ElmBleConnection(
     private fun teardown() {
         main.post { cancelTimeout(); pending.clear(); current = null; rx.setLength(0) }
         val g = gatt
-        gatt = null          // callbacks from the old GATT are ignored once this is null
+        gatt = null         // callbacks from the old GATT are ignored once this is null
         tx = null
         try { g?.disconnect(); g?.close() } catch (_: SecurityException) {}
     }
@@ -166,6 +169,10 @@ class ElmBleConnection(
 
     private fun finishInit() {
         current = null
+        
+        // Automatically check and add vehicle profile on successful connection
+        checkAndAutoAddVehicle()
+
         if (ecuAnswered) {
             onState(ObdState.ECU_READY, "Adapter ready — the bike ECU answered a standard OBD-II request.")
         } else {
@@ -175,6 +182,23 @@ class ElmBleConnection(
                     "Live ECU data is not available for this bike/adapter."
             )
         }
+    }
+
+    private fun checkAndAutoAddVehicle() {
+        val database = db ?: return
+        try {
+            val existingVehicles = database.vehicles()
+            val matchFound = existingVehicles.any { it.name.contains(connectedDeviceName, ignoreCase = true) }
+            if (!matchFound && connectedDeviceName.isNotBlank()) {
+                database.addVehicle(
+                    name = connectedDeviceName,
+                    year = "2026",
+                    reg = "",
+                    variant = "BLE Connected",
+                    odometer = "0"
+                )
+            }
+        } catch (_: Exception) {}
     }
 
     // --------------------------------------------------------------- GATT callback
@@ -243,23 +267,4 @@ class ElmBleConnection(
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             if (g !== gatt || descriptor.uuid != cccd) return
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                report(ObdState.ERROR, "Could not enable adapter notifications (status $status).")
-                return
-            }
-            // Only one GATT operation may be in flight, so init starts after this write completes.
-            main.post { startInit() }
-        }
-
-        @Deprecated("Deprecated in Android 13")
-        override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic) {
-            @Suppress("DEPRECATION") val v = c.value ?: return
-            val text = String(v, Charsets.US_ASCII)
-            main.post { onData(text) }
-        }
-
-        override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {
-            val text = String(value, Charsets.US_ASCII)
-            main.post { onData(text) }
-        }
-    }
-}
+                report(ObdState.ERROR, "Could not enable adapter notifications
