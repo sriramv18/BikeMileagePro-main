@@ -267,4 +267,22 @@ class ElmBleConnection(
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             if (g !== gatt || descriptor.uuid != cccd) return
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                report(ObdState.ERROR, "Could not enable adapter notifications
+                report(ObdState.ERROR, "Could not enable adapter notifications (status $status).")
+                return
+            }
+            main.post { startInit() }
+        }
+
+        @Deprecated("Deprecated in Android 13")
+        override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic) {
+            @Suppress("DEPRECATION") val v = c.value ?: return
+            val text = String(v, Charsets.US_ASCII)
+            main.post { onData(text) }
+        }
+
+        override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {
+            val text = String(value, Charsets.US_ASCII)
+            main.post { onData(text) }
+        }
+    }
+}
