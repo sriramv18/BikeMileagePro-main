@@ -1,5 +1,8 @@
 package com.sriram.bikemileagepro
 
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -26,8 +29,8 @@ internal fun VehicleScreen(
 ) {
     var showAdd by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-    
-    // Edit form state keyed on selected vehicle ID
+
+    // Edit form is keyed on the selected vehicle so switching vehicle reloads the fields.
     var name by remember(selected.id) { mutableStateOf(selected.name) }
     var year by remember(selected.id) { mutableStateOf(selected.year) }
     var reg by remember(selected.id) { mutableStateOf(selected.reg) }
@@ -160,53 +163,77 @@ private fun AddVehicleDialog(
     )
 }
 
+@SuppressLint("MissingPermission")
 @Composable
 private fun BluetoothCard(env: Env) {
+    val context = env.context
     val ui = env.ui
+    val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    val bluetoothAdapter = bluetoothManager?.adapter
+
+    // Detect if phone's native Bluetooth is ON and actively connected to a paired device
+    val activeDevice = remember(ui.dataVersion) {
+        try {
+            if (bluetoothAdapter?.isEnabled == true) {
+                bluetoothAdapter.bondedDevices?.firstOrNull { device ->
+                    try {
+                        val method = device.javaClass.getMethod("isConnected")
+                        method.invoke(device) as? Boolean == true
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+            } else null
+        } catch (_: SecurityException) {
+            null
+        }
+    }
+
+    // Automatically connect Classic OBD transport when phone Bluetooth is connected to the bike
+    LaunchedEffect(activeDevice) {
+        if (activeDevice != null && ui.obdState == ObdState.DISCONNECTED) {
+            val deviceName = try { activeDevice.name ?: "Bike OBD" } catch (_: SecurityException) { "Bike OBD" }
+            val connection = ElmClassicConnection(context, env.db) { state, msg, fuelConsumed ->
+                ui.obdState = state
+                ui.obdMessage = msg
+                ui.connectedName = deviceName
+                if (fuelConsumed != null) {
+                    ui.obdFuelReading = fuelConsumed
+                }
+                env.bump()
+            }
+            connection.connect(activeDevice)
+        }
+    }
+
     val connected = ui.obdState == ObdState.ECU_READY || ui.obdState == ObdState.ADAPTER_READY
     val busy = ui.obdState == ObdState.CONNECTING || ui.obdState == ObdState.DISCOVERING
+
     Surface(color = Panel, shape = RoundedCornerShape(22.dp)) {
         Column(Modifier.fillMaxWidth().padding(17.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Bluetooth, tint = Teal, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("ELM327 BLE adapter", color = White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("Bike Bluetooth Connection", color = White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 obdChip(ui.obdState)
             }
             Text(
-                (if (ui.connectedName.isNotBlank()) ui.connectedName + " — " else "") + ui.obdMessage,
-                color = Muted, fontSize = 12.sp
+                when {
+                    bluetoothAdapter?.isEnabled != true -> "Turn on Bluetooth in your phone settings."
+                    activeDevice == null && !connected -> "Connect to your bike in phone Bluetooth settings first."
+                    else -> (if (ui.connectedName.isNotBlank()) "${ui.connectedName} — " else "") + ui.obdMessage
+                },
+                color = if (activeDevice != null || connected) Green else Orange,
+                fontSize = 12.sp
             )
             if (connected || busy) {
                 OutlinedButton(onClick = { env.actions.disconnectBle() }, modifier = Modifier.fillMaxWidth()) {
                     Text("DISCONNECT", color = Orange)
                 }
             }
-            OutlinedButton(
-                onClick = { env.actions.scanBle() }, enabled = !ui.scanning, modifier = Modifier.fillMaxWidth()
-            ) { Text(if (ui.scanning) "SCANNING…" else "SCAN NEARBY BLE DEVICES", color = Teal) }
-            Text(ui.scanMessage, color = Muted, fontSize = 11.sp)
-            ui.scanResults.forEach { d ->
-                Surface(color = Color(0xFF0F2333), shape = RoundedCornerShape(14.dp)) {
-                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(d.name, color = White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text(
-                                d.address + " · " + d.rssi + " dBm" + if (d.likelyObd) " · likely OBD adapter" else "",
-                                color = if (d.likelyObd) Green else Muted, fontSize = 10.sp
-                            )
-                        }
-                        TextButton(onClick = { env.actions.connectBle(d) }, enabled = !busy) {
-                            Text("CONNECT", color = Teal, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                        }
-                    }
-                }
-            }
             Text(
-                "This connects to the adapter over BLE and checks whether the bike answers a standard OBD-II request. " +
-                    "Live ECU values (speed, RPM, fuel) are not read yet, and many motorcycles do not support standard OBD-II. " +
-                    "Classic-Bluetooth (non-BLE) ELM327 adapters will not appear here.",
-                color = Orange, fontSize = 11.sp
+                "Automatically detects your active phone Bluetooth connection to read fuel consumption and enable trip tracking.",
+                color = Muted, fontSize = 11.sp
             )
         }
     }
