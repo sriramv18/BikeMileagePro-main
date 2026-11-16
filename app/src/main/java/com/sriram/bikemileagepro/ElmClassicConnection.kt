@@ -1,0 +1,145 @@
+package com.sriram.bikemileagepro
+
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothSocket
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import java.io.InputStream
+import java.io.OutputStream
+import java.util.UUID
+import java.util.concurrent.Executors
+
+/**
+ * Classic Bluetooth (SPP / RFCOMM) transport for standard ELM327 OBD adapters
+ * paired via Android's native Bluetooth settings.
+ */
+class ElmClassicConnection(
+    private val context: Context,
+    private val db: TripDatabase? = null,
+    private val onState: (ObdState, String) -> Unit
+) {
+    private val main = Handler(Looper.getMainLooper())
+    private val executor = Executors.newSingleThreadExecutor()
+    private var socket: BluetoothSocket? = null
+    private var inputStream: InputStream? = null
+    private var outputStream: OutputStream? = null
+    private var isConnected = false
+
+    private fun report(state: ObdState, message: String) {
+        main.post { onState(state, message) }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun connect(device: BluetoothDevice) {
+        disconnect()
+        val deviceName = try { device.name } catch (_: SecurityException) { null } ?: "OBD Device"
+        report(ObdState.CONNECTING, "Connecting via Classic Bluetooth to $deviceName...")
+
+        executor.execute {
+            try {
+                // Standard SPP UUID for ELM327 / OBD-II adapters
+                val sppUuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+                val tmpSocket = device.createRfcommSocketToServiceRecord(sppUuid)
+                socket = tmpSocket
+
+                tmpSocket.connect()
+                inputStream = tmpSocket.inputStream
+                outputStream = tmpSocket.outputStream
+                isConnected = true
+
+                report(ObdState.DISCOVERING, "Connected. Running ELM327 initialization...")
+
+                if (runInitSequence()) {
+                    checkAndAutoAddVehicle(deviceName)
+                }
+            } catch (e: Exception) {
+                disconnect()
+                report(ObdState.ERROR, "Connection failed: ${e.localizedMessage ?: "Unknown error"}")
+            }
+        }
+    }
+
+    fun disconnect() {
+        isConnected = false
+        try {
+            inputStream?.close()
+            outputStream?.close()
+            socket?.close()
+        } catch (_: Exception) {}
+        socket = null
+        inputStream = null
+        outputStream = null
+        report(ObdState.DISCONNECTED, "Disconnected")
+    }
+
+    private fun writeCommand(cmd: String): String {
+        val out = outputStream ?: return ""
+        val inp = inputStream ?: return ""
+        try {
+            out.write((cmd + "\r").toByteArray(Charsets.US_ASCII))
+            out.flush()
+
+            val sb = StringBuilder()
+            val buffer = ByteArray(1024)
+            val startTime = System.currentTimeMillis()
+
+            while (System.currentTimeMillis() - startTime < 5000) {
+                if (inp.available() > 0) {
+                    val bytesRead = inp.read(buffer)
+                    if (bytesRead > 0) {
+                        val text = String(buffer, 0, bytesRead, Charsets.US_ASCII)
+                        sb.append(text)
+                        if (sb.contains(">")) break
+                    }
+                }
+                Thread.sleep(50)
+            }
+            return sb.toString().trim()
+        } catch (_: Exception) {
+            return ""
+        }
+    }
+
+    private fun runInitSequence(): Boolean {
+        val cmds = listOf("ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0", "0100")
+        var ecuAnswered = false
+
+        for (cmd in cmds) {
+            if (!isConnected) return false
+            val reply = writeCommand(cmd)
+            if (cmd == "ATZ" && reply.isBlank()) {
+                report(ObdState.ERROR, "Device connected, but did not answer ELM327 ATZ command.")
+                return false
+            }
+            if (cmd == "0100") {
+                ecuAnswered = reply.replace(" ", "").contains("4100")
+            }
+        }
+
+        if (ecuAnswered) {
+            report(ObdState.ECU_READY, "Adapter ready — bike ECU answered standard OBD-II request.")
+        } else {
+            report(ObdState.ADAPTER_READY, "Adapter connected, but ECU did not answer 0100. GPS tracking enabled.")
+        }
+        return true
+    }
+
+    private fun checkAndAutoAddVehicle(deviceName: String) {
+        val database = db ?: return
+        try {
+            val vehicles = database.vehicles()
+            val match = vehicles.any { it.name.contains(deviceName, ignoreCase = true) }
+            if (!match && deviceName.isNotBlank()) {
+                database.addVehicle(
+                    name = deviceName,
+                    year = "2026",
+                    reg = "",
+                    variant = "Classic BT OBD",
+                    odo = "0"
+                )
+            }
+        } catch (_: Exception) {}
+    }
+}
