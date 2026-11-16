@@ -47,3 +47,11 @@ connected after the app is closed.
 ## Not tested
 Background/screen-off tracking, process-death recovery, BLE with a real adapter and GPS accuracy all need testing
 on a physical phone.
+
+
+## Build fix update
+- Removed duplicate `DashboardScreen()` declaration from `app/src/main/java/com/sriram/bikemileagepro/Dashboard.kt`.
+- Kept `DashboardScreen.kt` as the single canonical dashboard composable. The two files declared the same package-level composable signature, creating a Kotlin duplicate/conflicting declaration.
+- Preserved the existing vehicle model and `VehicleScreen.kt` fields.
+
+The supplied Actions screenshot showed the repeated `DashboardScreen(...)` declaration context before `compileDebugKotlin` failed. The duplicate source file is removed. Run GitHub Actions to confirm the full build; this environment does not have Gradle/Android SDK installed, so no successful APK build is claimed.
