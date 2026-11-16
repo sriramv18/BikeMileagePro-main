@@ -1,5 +1,8 @@
 package com.sriram.bikemileagepro
 
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,6 +34,7 @@ import kotlinx.coroutines.withContext
 private fun placeLabel(place: String, lat: Double?, lon: Double?): String =
     place.ifBlank { GeoNames.coords(lat, lon) }
 
+@SuppressLint("MissingPermission")
 @Composable
 internal fun TripsScreen(
     env: Env, vehicle: Vehicle, trips: List<TripRecord>,
@@ -38,45 +42,73 @@ internal fun TripsScreen(
 ) {
     val ui = env.ui
     val live = ui.live
+    val context = env.context
     var selectedTripId by remember { mutableStateOf<Long?>(null) }
     val selectedTrip = trips.firstOrNull { it.id == selectedTripId }
     val liveVehicleName = remember(live.vehicleId, env.ui.dataVersion) {
         env.db.vehicles().firstOrNull { it.id == live.vehicleId }?.name ?: ""
     }
 
-    // Connection checks for enabling trip start
-    val isLocationReady = ui.hasLocationPermission && ui.locationEnabled
-    val isBluetoothConnected = ui.obdState == ObdState.ECU_READY || ui.obdState == ObdState.ADAPTER_READY
+    // Direct check of native phone Bluetooth connection
+    val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    val bluetoothAdapter = bluetoothManager?.adapter
+    val activeDevice = remember(ui.dataVersion, ui.obdState) {
+        try {
+            if (bluetoothAdapter?.isEnabled == true) {
+                bluetoothAdapter.bondedDevices?.firstOrNull { device ->
+                    try {
+                        val method = device.javaClass.getMethod("isConnected")
+                        method.invoke(device) as? Boolean == true
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+            } else null
+        } catch (_: SecurityException) {
+            null
+        }
+    }
+
+    // Automatically connect and pull fuel data as soon as native Bluetooth is connected
+    LaunchedEffect(activeDevice) {
+        if (activeDevice != null && ui.obdState == ObdState.DISCONNECTED) {
+            val deviceName = try { activeDevice.name ?: "Bike Bluetooth" } catch (_: SecurityException) { "Bike Bluetooth" }
+            val connection = ElmClassicConnection(context, env.db) { state, msg, fuelConsumed ->
+                ui.obdState = state
+                ui.obdMessage = msg
+                ui.connectedName = deviceName
+                if (fuelConsumed != null) {
+                    ObdFuelStore.latestFuelReading = fuelConsumed
+                }
+                env.bump()
+            }
+            connection.connect(activeDevice)
+        }
+    }
+
+    val isBluetoothConnected = activeDevice != null || ui.obdState == ObdState.ECU_READY || ui.obdState == ObdState.ADAPTER_READY
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
-            SectionTitle("Ride tracking", "GPS distance, route and speed for ${vehicle.name}.")
+            SectionTitle("Ride tracking", "Distance, route and speed for ${vehicle.name}.")
         }
         item {
-            // Connection status: GPS + OBD adapter
+            // Native Bluetooth & Fuel Sync Status
             Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF20384B))) {
                 Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("CONNECTION STATUS", color = Muted, fontSize = 10.sp, letterSpacing = 1.4.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (isLocationReady) StatusChip("GPS READY", Green)
-                        else StatusChip(if (!ui.hasLocationPermission) "GPS PERMISSION OFF" else "GPS OFF", Red)
-                        obdChip(ui.obdState)
+                        if (isBluetoothConnected) StatusChip("BLUETOOTH CONNECTED", Green)
+                        else StatusChip("BLUETOOTH DISCONNECTED", Red)
                     }
                     Text(
-                        when (ui.obdState) {
-                            ObdState.ECU_READY -> "OBD adapter ${ui.connectedName}: the bike ECU answered."
-                            ObdState.ADAPTER_READY -> "OBD adapter ${ui.connectedName} is connected, but the ECU gave no OBD-II data. Trips use GPS distance."
-                            ObdState.CONNECTING, ObdState.DISCOVERING -> ui.obdMessage
-                            ObdState.ERROR -> ui.obdMessage
-                            ObdState.DISCONNECTED -> "No OBD adapter connected. Connect via Bluetooth to enable trip start."
+                        when {
+                            bluetoothAdapter?.isEnabled != true -> "Turn on Bluetooth in your phone settings."
+                            !isBluetoothConnected -> "Connect to your bike in your phone's Bluetooth settings to enable trip start and fuel sync."
+                            else -> "Connected to ${ui.connectedName.ifBlank { "Bike" }} — Fuel consumption synced & ready."
                         },
                         color = Muted, fontSize = 11.sp
                     )
-                    if (!isBluetoothConnected) {
-                        TextButton(onClick = onOpenVehicle, contentPadding = PaddingValues(0.dp)) {
-                            Text("CONNECT AN ADAPTER (VEHICLE TAB) →", color = Teal, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
                 }
             }
         }
@@ -112,13 +144,13 @@ internal fun TripsScreen(
                         if (live.lastLat != null) Text("Now: " + GeoNames.coords(live.lastLat, live.lastLon), color = Muted, fontSize = 11.sp)
                     }
                     Spacer(Modifier.height(18.dp))
-                    
-                    // Button state rules: Start enabled ONLY if Location & Bluetooth are ready
+
+                    // Start Trip enabled ONLY when phone Bluetooth is connected
                     when (live.state) {
                         TripState.IDLE -> Button(
                             onClick = { env.actions.startTrip(vehicle.id) },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = isLocationReady && isBluetoothConnected,
+                            enabled = isBluetoothConnected,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Teal,
                                 contentColor = Ink,
@@ -127,10 +159,7 @@ internal fun TripsScreen(
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null)
                             Text(
-                                if (!isBluetoothConnected && !isLocationReady) "GPS & BLUETOOTH REQUIRED"
-                                else if (!isBluetoothConnected) "BLUETOOTH OBD REQUIRED TO START"
-                                else if (!isLocationReady) "GPS REQUIRED TO START"
-                                else "START TRIP",
+                                if (!isBluetoothConnected) "CONNECT BLUETOOTH TO START" else "START TRIP",
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -156,17 +185,11 @@ internal fun TripsScreen(
                             Text("STOP & SAVE TRIP", color = Orange)
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Tracking continues in a foreground service while the screen is off. " +
-                            "Requires active GPS location and a connected Bluetooth OBD adapter to begin.",
-                        color = Muted, fontSize = 10.sp
-                    )
                 }
             }
         }
         item { SectionTitle("Ride history", "Saved trips for ${vehicle.name}. Tap a trip for the route and mileage.") }
-        if (trips.isEmpty()) item { EmptyState("No trips recorded yet", "Connect your Bluetooth adapter, ensure GPS is active, and start a ride.") }
+        if (trips.isEmpty()) item { EmptyState("No trips recorded yet", "Connect your bike via Bluetooth in phone settings and start a ride.") }
         items(trips, key = { it.id }) { trip ->
             val m = tripMileage[trip.id]
             Surface(color = Panel, shape = RoundedCornerShape(18.dp)) {
