@@ -73,13 +73,10 @@ internal fun TripsScreen(
     LaunchedEffect(activeDevice) {
         if (activeDevice != null && ui.obdState == ObdState.DISCONNECTED) {
             val deviceName = try { activeDevice.name ?: "Bike Bluetooth" } catch (_: SecurityException) { "Bike Bluetooth" }
-            val connection = ElmClassicConnection(context, env.db) { state, msg, fuelConsumed ->
+            val connection = ElmClassicConnection(context, env.db) { state, msg, _ ->
                 ui.obdState = state
                 ui.obdMessage = msg
                 ui.connectedName = deviceName
-                if (fuelConsumed != null) {
-                    ui.obdFuelReading = fuelConsumed
-                }
                 env.bump()
             }
             connection.connect(activeDevice)
