@@ -23,3 +23,9 @@
 
 ## Verification
 Source changes and ZIP structure are checked. Android Gradle compilation and device testing must be performed through GitHub Actions and on the user's phone; no successful build is claimed here.
+
+
+## GitHub Actions validation fix
+- Aligned `app/build.gradle.kts` with this release: `versionName = "1.0.4"` and `versionCode = 15`.
+- The workflow validates required source files and reports the exact missing file or failed configuration check instead of exiting silently.
+- The APK build and unit-test steps remain enabled.

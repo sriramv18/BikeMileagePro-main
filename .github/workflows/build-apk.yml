@@ -27,15 +27,34 @@ jobs:
           gradle-version: '8.9'
 
       - name: Verify project structure
+        shell: bash
         run: |
-          test -f settings.gradle.kts
-          test -f app/src/main/AndroidManifest.xml
-          test -f app/src/main/java/com/sriram/bikemileagepro/MainActivity.kt
-          test -f app/src/main/java/com/sriram/bikemileagepro/RideTrackingService.kt
-          test -f app/src/main/java/com/sriram/bikemileagepro/ActiveTripStore.kt
-          test -f app/src/main/java/com/sriram/bikemileagepro/ElmBleConnection.kt
-          grep -q 'versionName = "1.0.4"' app/build.gradle.kts
-          grep -q 'android:foregroundServiceType="location"' app/src/main/AndroidManifest.xml
+          set -euo pipefail
+          required_files=(
+            "settings.gradle.kts"
+            "app/src/main/AndroidManifest.xml"
+            "app/src/main/java/com/sriram/bikemileagepro/MainActivity.kt"
+            "app/src/main/java/com/sriram/bikemileagepro/RideTrackingService.kt"
+            "app/src/main/java/com/sriram/bikemileagepro/ActiveTripStore.kt"
+            "app/src/main/java/com/sriram/bikemileagepro/ElmBleConnection.kt"
+          )
+          for file in "${required_files[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "ERROR: Required project file is missing: $file"
+              exit 1
+            fi
+            echo "OK: $file"
+          done
+
+          if ! grep -Fq 'versionName = "1.0.4"' app/build.gradle.kts; then
+            echo "ERROR: app/build.gradle.kts must declare versionName = \"1.0.4\""
+            exit 1
+          fi
+          if ! grep -Fq 'android:foregroundServiceType="location"' app/src/main/AndroidManifest.xml; then
+            echo "ERROR: RideTrackingService location foreground-service type is missing from AndroidManifest.xml"
+            exit 1
+          fi
+          echo "Project structure verification passed."
 
       - name: Build debug APK
         run: gradle --no-daemon clean assembleDebug
