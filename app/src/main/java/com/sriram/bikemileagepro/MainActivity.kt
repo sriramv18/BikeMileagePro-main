@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.DirectionsBike
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Settings as SettingsIcon
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -356,7 +357,7 @@ private fun MileageTheme(content: @Composable () -> Unit) {
 }
 
 private enum class Screen(val label: String) {
-    HOME("Home"), VEHICLE("Vehicle"), TRIPS("Trips"), FUEL("Fuel")
+    HOME("Home"), VEHICLE("Vehicle"), TRIPS("Trips"), FUEL("Fuel"), SETTINGS("Settings")
 }
 
 @Composable
@@ -394,7 +395,8 @@ private fun MileageApp(env: Env) {
                     Screen.HOME to Icons.Default.Dashboard,
                     Screen.VEHICLE to Icons.Default.DirectionsBike,
                     Screen.TRIPS to Icons.Default.Route,
-                    Screen.FUEL to Icons.Default.LocalGasStation
+                    Screen.FUEL to Icons.Default.LocalGasStation,
+                    Screen.SETTINGS to Icons.Default.SettingsIcon
                 )
                 items.forEach { (screen, icon) ->
                     NavigationBarItem(
@@ -423,6 +425,7 @@ private fun MileageApp(env: Env) {
                 Screen.VEHICLE -> VehicleScreen(appEnv, vehicles, vehicle, onSelect = { vehicleId = it })
                 Screen.TRIPS -> TripsScreen(appEnv, vehicle, trips, tripMileage, onOpenVehicle = { selected = Screen.VEHICLE })
                 Screen.FUEL -> FuelScreen(appEnv, vehicle, fuels, intervals)
+                Screen.SETTINGS -> SettingsScreen(appEnv)
             }
         }
     }

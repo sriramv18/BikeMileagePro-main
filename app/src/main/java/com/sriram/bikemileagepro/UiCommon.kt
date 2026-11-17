@@ -223,3 +223,42 @@ internal fun RouteMap(points: List<Pair<Double, Double>>, modifier: Modifier = M
         drawCircle(Orange, radius = 7.dp.toPx(), center = pt(points.last()))
     }
 }
+
+
+/** Line chart with value labels and date labels, using the same real bucket data as the bar chart. */
+@Composable
+internal fun LineChart(buckets: List<ChartBucket>, decimals: Int) {
+    if (buckets.isEmpty()) return
+    val maxValue = max(buckets.maxOf { it.value }, 1e-9)
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().height(170.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Canvas(Modifier.weight(1f).fillMaxHeight()) {
+                val left = 8.dp.toPx()
+                val right = size.width - 8.dp.toPx()
+                val top = 14.dp.toPx()
+                val bottom = size.height - 18.dp.toPx()
+                for (i in 0..3) {
+                    val y = top + (bottom - top) * i / 3f
+                    drawLine(Color(0xFF294254), Offset(left, y), Offset(right, y), 1.dp.toPx())
+                }
+                val points = buckets.mapIndexed { index, bucket ->
+                    val x = if (buckets.size == 1) (left + right) / 2f
+                    else left + (right - left) * index / (buckets.size - 1).toFloat()
+                    val y = bottom - (bucket.value / maxValue).toFloat().coerceIn(0f, 1f) * (bottom - top)
+                    Offset(x, y)
+                }
+                if (points.size > 1) {
+                    val path = Path().apply {
+                        points.forEachIndexed { i, p -> if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) }
+                    }
+                    drawPath(path, Teal, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                }
+                points.forEach { drawCircle(Teal, 4.dp.toPx(), it) }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            buckets.forEach { Text(it.label, color = Muted, fontSize = 8.sp, maxLines = 1) }
+        }
+        Text("Peak: ${fmt(maxValue, decimals)}", color = Muted, fontSize = 9.sp)
+    }
+}

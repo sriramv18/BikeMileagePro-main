@@ -15,6 +15,8 @@ data class ChartBucket(val label: String, val value: Double)
 
 enum class Period(val label: String) { DAY("Day"), MONTH("Month"), YEAR("Year") }
 
+enum class ChartDisplay(val label: String) { BAR("Bar"), LINE("Line") }
+
 enum class ChartMetric(val label: String, val unit: String) {
     MILEAGE("Mileage", "km/L"), DISTANCE("Distance", "km"), SPEND("Fuel spend", "₹")
 }

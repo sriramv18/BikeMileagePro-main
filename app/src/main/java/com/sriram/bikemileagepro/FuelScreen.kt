@@ -26,7 +26,10 @@ internal fun FuelScreen(env: Env, vehicle: Vehicle, fuels: List<FuelRecord>, int
     var litres by remember(vehicle.id) { mutableStateOf("") }
     var amount by remember(vehicle.id) { mutableStateOf("") }
     var fullTank by remember { mutableStateOf(true) }
-    var isAutoRead by remember { mutableStateOf(false) }
+    val fuelPrefs = remember { env.context.getSharedPreferences("app_settings", android.content.Context.MODE_PRIVATE) }
+    var isAutoRead by remember {
+        mutableStateOf(fuelPrefs.getBoolean("fuel_auto_read", false))
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
 
@@ -57,7 +60,10 @@ internal fun FuelScreen(env: Env, vehicle: Vehicle, fuels: List<FuelRecord>, int
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = isAutoRead,
-                            onCheckedChange = { isAutoRead = it },
+                            onCheckedChange = {
+                                isAutoRead = it
+                                fuelPrefs.edit().putBoolean("fuel_auto_read", it).apply()
+                            },
                             colors = CheckboxDefaults.colors(checkedColor = Teal)
                         )
                         Text(
@@ -122,13 +128,18 @@ internal fun FuelScreen(env: Env, vehicle: Vehicle, fuels: List<FuelRecord>, int
                             if (problem != null) {
                                 error = problem; savedMessage = null
                             } else {
-                                env.db.saveFuel(vehicle.id, date.trim(), l, a, o, fullTank)
-                                error = null
-                                savedMessage = "Fuel entry saved."
-                                odo = ""; litres = ""; amount = ""
-                                isAutoRead = false
-                                date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-                                env.bump()
+                                val savedId = env.db.saveFuel(vehicle.id, date.trim(), l, a, o, fullTank)
+                                if (savedId <= 0L) {
+                                    error = "Fuel entry could not be saved. Please try again."
+                                    savedMessage = null
+                                } else {
+                                    error = null
+                                    savedMessage = "Fuel entry saved permanently for ${vehicle.name}."
+                                    odo = ""; litres = ""; amount = ""
+                                    // Keep the Auto-read preference selected; it is stored in app settings.
+                                    date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+                                    env.bump()
+                                }
                             }
                         }
                     }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Ink)) {

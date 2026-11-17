@@ -275,8 +275,8 @@ class TripDatabase(private val appContext: Context) :
         return null
     }
 
-    fun saveFuel(vehicleId: Long, date: String, litres: Double, amount: Double, odometer: Double, fullTank: Boolean) {
-        writableDatabase.insert("fuel", null, ContentValues().apply {
+    fun saveFuel(vehicleId: Long, date: String, litres: Double, amount: Double, odometer: Double, fullTank: Boolean): Long {
+        return writableDatabase.insert("fuel", null, ContentValues().apply {
             put("vehicle_id", vehicleId); put("date", date); put("litres", litres)
             put("amount", amount); put("odometer_km", odometer); put("full_tank", if (fullTank) 1 else 0)
         })

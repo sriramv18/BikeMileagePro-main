@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Timeline
+import android.content.Context
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,14 +28,22 @@ internal fun DashboardScreen(
 ) {
     val ui = env.ui
     val live = ui.live
-    
+
     // Tab state: 0 for Summary, 1 for Charts
     var selectedTab by remember { mutableStateOf(0) }
-    
-    // Chart metric and period states
-    var metric by remember { mutableStateOf(ChartMetric.MILEAGE) }
-    var period by remember { mutableStateOf(Period.DAY) }
-    
+
+    // Chart preferences survive app restarts and are shared with Settings.
+    val chartPrefs = remember { env.context.getSharedPreferences("app_settings", Context.MODE_PRIVATE) }
+    var metric by remember {
+        mutableStateOf(ChartMetric.entries.firstOrNull { it.name == chartPrefs.getString("chart_metric", "MILEAGE") } ?: ChartMetric.MILEAGE)
+    }
+    var period by remember {
+        mutableStateOf(Period.entries.firstOrNull { it.name == chartPrefs.getString("chart_period", "DAY") } ?: Period.DAY)
+    }
+    var chartDisplay by remember {
+        mutableStateOf(ChartDisplay.entries.firstOrNull { it.name == chartPrefs.getString("chart_display", "BAR") } ?: ChartDisplay.BAR)
+    }
+
     val buckets = remember(metric, period, intervals, trips, fuels) {
         val all = when (metric) {
             ChartMetric.MILEAGE -> MileageCalc.mileageBuckets(intervals, period)
@@ -43,7 +52,7 @@ internal fun DashboardScreen(
         }
         all.takeLast(when (period) { Period.DAY -> 10; Period.MONTH -> 12; Period.YEAR -> 6 })
     }
-    
+
     val mileageByFuel = remember(intervals) { MileageCalc.mileageByFuelId(intervals) }
     val lastOdo = fuels.lastOrNull()?.odometerKm
 
@@ -73,7 +82,7 @@ internal fun DashboardScreen(
                 }
             }
         }
-        
+
         // Tab Selector (Summary vs Charts)
         item {
             TabRow(
@@ -109,7 +118,8 @@ internal fun DashboardScreen(
                             Text(" km/L", Modifier.padding(bottom = 9.dp), color = White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         }
                         Text(
-                            if (overall > 0) "Calculated from full-tank entries" else "Add two full-tank entries to calculate mileage",
+                            if (overall > 0) "${intervals.size} full-tank interval(s) · weighted by distance and litres"
+                            else "Mileage pending: save two full-tank entries with increasing odometer readings",
                             color = Muted, fontSize = 11.sp
                         )
                         Spacer(Modifier.height(15.dp))
@@ -188,7 +198,7 @@ internal fun DashboardScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             ChartMetric.entries.forEach { m ->
                                 FilterChip(
-                                    selected = metric == m, onClick = { metric = m },
+                                    selected = metric == m, onClick = { metric = m; chartPrefs.edit().putString("chart_metric", m.name).apply() },
                                     label = { Text(m.label, fontSize = 11.sp) },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = Color(0xFF1C4951), selectedLabelColor = Teal, labelColor = Muted
@@ -199,10 +209,27 @@ internal fun DashboardScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Period.entries.forEach { p ->
                                 FilterChip(
-                                    selected = period == p, onClick = { period = p },
+                                    selected = period == p, onClick = { period = p; chartPrefs.edit().putString("chart_period", p.name).apply() },
                                     label = { Text(p.label, fontSize = 11.sp) },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = Color(0xFF1C4951), selectedLabelColor = Teal, labelColor = Muted
+                                    )
+                                )
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Chart style", color = Muted, fontSize = 11.sp)
+                            ChartDisplay.entries.forEach { display ->
+                                FilterChip(
+                                    selected = chartDisplay == display,
+                                    onClick = {
+                                        chartDisplay = display
+                                        chartPrefs.edit().putString("chart_display", display.name).apply()
+                                    },
+                                    label = { Text(display.label, fontSize = 11.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFF1C4951),
+                                        selectedLabelColor = Teal, labelColor = Muted
                                     )
                                 )
                             }
@@ -218,7 +245,11 @@ internal fun DashboardScreen(
                                 color = Muted, fontSize = 11.sp
                             )
                         } else {
-                            BarChart(buckets, if (metric == ChartMetric.MILEAGE) 1 else 0)
+                            if (chartDisplay == ChartDisplay.BAR) {
+                                BarChart(buckets, if (metric == ChartMetric.MILEAGE) 1 else 0)
+                            } else {
+                                LineChart(buckets, if (metric == ChartMetric.MILEAGE) 1 else 0)
+                            }
                             Text("${buckets.size} ${period.label.lowercase()}(s) shown · ${metric.unit}", color = Muted, fontSize = 10.sp)
                         }
                     }
