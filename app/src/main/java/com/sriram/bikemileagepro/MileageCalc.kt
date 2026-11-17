@@ -1,5 +1,9 @@
 package com.sriram.bikemileagepro
 
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+
 /** One full-tank to full-tank interval used for a mileage (km/L) calculation. */
 data class FuelInterval(
     val fuelId: Long,
@@ -18,8 +22,17 @@ enum class Period(val label: String) { DAY("Day"), MONTH("Month"), YEAR("Year") 
 enum class ChartDisplay(val label: String) { BAR("Bar"), LINE("Line") }
 
 enum class ChartMetric(val label: String, val unit: String) {
-    MILEAGE("Mileage", "km/L"), DISTANCE("Distance", "km"), SPEND("Fuel spend", "₹")
+    MILEAGE("Mileage", "km/L"), DISTANCE("Distance", "km"), SPEND("Fuel spend", "₹"), TRIPS("Trips", "count")
 }
+
+data class DailyActivitySummary(
+    val date: String,
+    val distanceKm: Double,
+    val mileageKmPerL: Double?,
+    val fuelSpend: Double,
+    val tripsStarted: Int,
+    val tripsEnded: Int
+)
 
 /** source is "Actual", "Interval est." or "Average est." */
 data class TripMileage(val kmPerL: Double, val source: String)
