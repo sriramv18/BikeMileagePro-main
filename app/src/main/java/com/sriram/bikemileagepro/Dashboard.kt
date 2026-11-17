@@ -49,11 +49,19 @@ internal fun DashboardScreen(
             ChartMetric.MILEAGE -> MileageCalc.mileageBuckets(intervals, period)
             ChartMetric.DISTANCE -> MileageCalc.distanceBuckets(trips, period)
             ChartMetric.SPEND -> MileageCalc.spendBuckets(fuels, period)
+            ChartMetric.TRIPS -> MileageCalc.tripBuckets(trips, period)
         }
         all.takeLast(when (period) { Period.DAY -> 10; Period.MONTH -> 12; Period.YEAR -> 6 })
     }
 
     val mileageByFuel = remember(intervals) { MileageCalc.mileageByFuelId(intervals) }
+    val today = remember { java.time.LocalDate.now().toString() }
+    var selectedDate by remember {
+        mutableStateOf(chartPrefs.getString("dashboard_selected_day", today) ?: today)
+    }
+    val dailySummary = remember(selectedDate, trips, fuels, intervals) {
+        MileageCalc.dailySummary(selectedDate, trips, fuels, intervals)
+    }
     val lastOdo = fuels.lastOrNull()?.odometerKm
 
     // Calculate total running time in minutes for this vehicle
@@ -185,6 +193,13 @@ internal fun DashboardScreen(
         } else {
             // ================= CHARTS TAB =================
             item {
+                DailyActivityCard(
+                    summary = dailySummary,
+                    selectedDate = selectedDate,
+                    onSelectDate = { selectedDate = it; chartPrefs.edit().putString("dashboard_selected_day", it).apply() }
+                )
+            }
+            item {
                 Surface(color = Panel, shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, Color(0xFF20384B))) {
                     Column(Modifier.fillMaxWidth().padding(17.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -241,12 +256,17 @@ internal fun DashboardScreen(
                                     ChartMetric.MILEAGE -> "Mileage appears after two full-tank fuel entries."
                                     ChartMetric.DISTANCE -> "Distance appears after you save a trip."
                                     ChartMetric.SPEND -> "Spend appears after you save a fuel entry."
+                                    ChartMetric.TRIPS -> "Trip count appears after you save a trip."
                                 },
                                 color = Muted, fontSize = 11.sp
                             )
                         } else {
                             if (chartDisplay == ChartDisplay.BAR) {
-                                BarChart(buckets, if (metric == ChartMetric.MILEAGE) 1 else 0)
+                                BarChart(buckets, when (metric) {
+                                ChartMetric.MILEAGE -> 1
+                                ChartMetric.TRIPS -> 0
+                                else -> 0
+                            })
                             } else {
                                 LineChart(buckets, if (metric == ChartMetric.MILEAGE) 1 else 0)
                             }
@@ -255,6 +275,76 @@ internal fun DashboardScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun DailyActivityCard(
+    summary: DailyActivitySummary,
+    selectedDate: String,
+    onSelectDate: (String) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Surface(
+        color = Panel,
+        shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(1.dp, Color(0xFF254357))
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Daily activity", color = White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    Text("Mileage, distance, fuel spend and trip activity", color = Muted, fontSize = 11.sp)
+                }
+                OutlinedButton(onClick = {
+                    val date = runCatching { java.time.LocalDate.parse(selectedDate) }.getOrElse { java.time.LocalDate.now() }
+                    android.app.DatePickerDialog(
+                        context,
+                        { _, year, month, day ->
+                            onSelectDate(java.time.LocalDate.of(year, month + 1, day).toString())
+                        },
+                        date.year, date.monthValue - 1, date.dayOfMonth
+                    ).show()
+                }) { Text(selectedDate, color = Teal, fontSize = 11.sp) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DailyStat("DISTANCE", fmt(summary.distanceKm, 2) + " km", Teal, Modifier.weight(1f))
+                DailyStat("MILEAGE", summary.mileageKmPerL?.let { fmt(it, 1) + " km/L" } ?: "--", Green, Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DailyStat("FUEL SPEND", "₹" + fmt(summary.fuelSpend, 0), Orange, Modifier.weight(1f))
+                DailyStat("TRIPS", summary.tripsStarted.toString(), White, Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TripCountPill("Started", summary.tripsStarted, Teal)
+                TripCountPill("Completed", summary.tripsEnded, Green)
+            }
+            Text(
+                "Distance is grouped by trip start date. Completion date is estimated from the saved start time plus trip duration.",
+                color = Muted, fontSize = 10.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun DailyStat(label: String, value: String, tint: Color, modifier: Modifier = Modifier) {
+    Surface(modifier, color = Color(0xFF102432), shape = RoundedCornerShape(14.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, color = Muted, fontSize = 9.sp, letterSpacing = 1.sp)
+            Text(value, color = tint, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun TripCountPill(label: String, count: Int, tint: Color) {
+    Surface(color = Color(0xFF102432), shape = RoundedCornerShape(50)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("$label: ", color = Muted, fontSize = 11.sp)
+            Text(count.toString(), color = tint, fontWeight = FontWeight.Bold, fontSize = 12.sp)
         }
     }
 }

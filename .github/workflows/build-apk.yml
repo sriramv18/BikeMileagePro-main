@@ -34,7 +34,7 @@ jobs:
           test -f app/src/main/java/com/sriram/bikemileagepro/RideTrackingService.kt
           test -f app/src/main/java/com/sriram/bikemileagepro/ActiveTripStore.kt
           test -f app/src/main/java/com/sriram/bikemileagepro/ElmBleConnection.kt
-          grep -q 'versionName = "1.0.3"' app/build.gradle.kts
+          grep -q 'versionName = "1.0.4"' app/build.gradle.kts
           grep -q 'android:foregroundServiceType="location"' app/src/main/AndroidManifest.xml
 
       - name: Build debug APK
@@ -43,7 +43,7 @@ jobs:
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: BikeMileagePro-Native-Kotlin-v1.0.3-debug
+          name: BikeMileagePro-Native-Kotlin-v1.0.4-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30

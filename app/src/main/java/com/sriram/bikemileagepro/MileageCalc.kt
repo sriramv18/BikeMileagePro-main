@@ -110,4 +110,42 @@ object MileageCalc {
         fuels.groupBy { key(it.date, period) }.toSortedMap().map { (k, v) ->
             ChartBucket(label(k, period), v.sumOf { it.amount })
         }
+
+    fun tripBuckets(trips: List<TripRecord>, period: Period): List<ChartBucket> =
+        trips.groupBy { key(it.date, period) }.toSortedMap().map { (k, v) ->
+            ChartBucket(label(k, period), v.size.toDouble())
+        }
+
+    /** Daily figures use trip start date for distance and calculate completion date from duration. */
+    fun dailySummary(
+        date: String,
+        trips: List<TripRecord>,
+        fuels: List<FuelRecord>,
+        intervals: List<FuelInterval>
+    ): DailyActivitySummary {
+        val dayTrips = trips.filter { it.date.take(10) == date }
+        val ended = trips.count { trip ->
+            val start = runCatching {
+                LocalDateTime.parse(trip.date, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+            }.getOrNull()
+            val endDay = start?.plusMinutes(trip.durationMinutes.toLong())?.toLocalDate()?.toString()
+            endDay == date
+        }
+        val dayIntervals = intervals.filter { it.endDate.take(10) == date }
+        val km = dayIntervals.sumOf { it.km }
+        val litres = dayIntervals.sumOf { it.litres }
+        return DailyActivitySummary(
+            date = date,
+            distanceKm = dayTrips.sumOf { it.distanceKm },
+            mileageKmPerL = if (litres > 0.0) km / litres else null,
+            fuelSpend = fuels.filter { it.date.take(10) == date }.sumOf { it.amount },
+            tripsStarted = dayTrips.size,
+            tripsEnded = ended
+        )
+    }
+
+    fun lastDays(referenceDate: String, count: Int): List<String> {
+        val base = runCatching { LocalDate.parse(referenceDate) }.getOrElse { LocalDate.now() }
+        return (count - 1 downTo 0).map { base.minusDays(it.toLong()).toString() }
+    }
 }
