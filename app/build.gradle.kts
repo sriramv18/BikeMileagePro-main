@@ -17,6 +17,21 @@ android {
         versionName = "1.0.6"
     }
 
+    // GitHub Actions supplies a persistent debug keystore through environment variables.
+    // Local builds continue to use Android's normal local debug keystore when these are absent.
+    val persistentDebugKeystore = System.getenv("ANDROID_SIGNING_KEYSTORE")
+    if (!persistentDebugKeystore.isNullOrBlank()) {
+        signingConfigs {
+            create("persistentDebug") {
+                storeFile = file(persistentDebugKeystore)
+                storePassword = System.getenv("ANDROID_SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_SIGNING_KEY_PASSWORD")
+            }
+        }
+        buildTypes.getByName("debug").signingConfig = signingConfigs.getByName("persistentDebug")
+    }
+
     buildFeatures {
         compose = true
     }

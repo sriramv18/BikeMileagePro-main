@@ -56,8 +56,33 @@ jobs:
           fi
           echo "Project structure verification passed."
 
+      - name: Prepare persistent debug signing key
+        shell: bash
+        env:
+          ANDROID_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ANDROID_SIGNING_KEYSTORE_BASE64" ]]; then
+            echo "ERROR: Configure the ANDROID_SIGNING_KEYSTORE_BASE64 repository secret before building."
+            exit 1
+          fi
+          if [[ -z "$ANDROID_SIGNING_STORE_PASSWORD" || -z "$ANDROID_SIGNING_KEY_ALIAS" || -z "$ANDROID_SIGNING_KEY_PASSWORD" ]]; then
+            echo "ERROR: Configure ANDROID_SIGNING_STORE_PASSWORD, ANDROID_SIGNING_KEY_ALIAS, and ANDROID_SIGNING_KEY_PASSWORD repository secrets."
+            exit 1
+          fi
+          key_path="$RUNNER_TEMP/bikemileagepro-debug.keystore"
+          printf '%s' "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 --decode > "$key_path"
+          echo "ANDROID_SIGNING_KEYSTORE=$key_path" >> "$GITHUB_ENV"
+
       - name: Build debug APK
         run: gradle --no-daemon clean assembleDebug
+        env:
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
 
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
