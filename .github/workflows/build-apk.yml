@@ -47,7 +47,7 @@ jobs:
           done
 
           if ! grep -Fq 'versionName = "1.0.6"' app/build.gradle.kts; then
-            echo "ERROR: app/build.gradle.kts must declare versionName = \"1.0.4\""
+            echo "ERROR: app/build.gradle.kts must declare versionName = \"1.0.6\""
             exit 1
           fi
           if ! grep -Fq 'android:foregroundServiceType="location"' app/src/main/AndroidManifest.xml; then
