@@ -28,6 +28,15 @@ enum class ChartMetric(val label: String, val unit: String) {
 /** source is "Actual", "Interval est." or "Average est." */
 data class TripMileage(val kmPerL: Double, val source: String)
 
+data class DailyActivitySummary(
+    val date: String,
+    val distanceKm: Double,
+    val mileageKmPerL: Double?,
+    val fuelSpend: Double,
+    val tripsStarted: Int,
+    val tripsEnded: Int
+)
+
 /** Pure calculation helpers (no Android dependencies). */
 object MileageCalc {
 
