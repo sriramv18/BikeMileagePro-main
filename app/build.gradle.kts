@@ -1,3 +1,4 @@
+```kotlin
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,18 +13,23 @@ android {
         applicationId = "com.sriram.bikemileagepro"
         minSdk = 26
         targetSdk = 35
+
         versionCode = 4
         versionName = "1.0.4"
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 }
 
 dependencies {
@@ -36,6 +42,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
 }
+```
