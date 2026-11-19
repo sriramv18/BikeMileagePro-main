@@ -329,7 +329,12 @@ class RideTrackingService : Service(), LocationListener {
 
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onProviderEnabled(provider: String) {}
-    override fun onProviderDisabled(provider: String) {}
+    override fun onProviderDisabled(provider: String) {
+        if (provider == LocationManager.GPS_PROVIDER) {
+            // GPS is a required trip prerequisite. Stop & save rather than silently tracking without it.
+            finishRide()
+        }
+    }
     @Deprecated("Deprecated in Android")
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
 }

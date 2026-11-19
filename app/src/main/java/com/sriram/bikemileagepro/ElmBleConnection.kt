@@ -39,6 +39,10 @@ class ElmBleConnection(
     private val pending = ArrayDeque<String>()
     private var current: String? = null
     private var ecuAnswered = false
+    private var fuelLevelSupported = false
+    private var fuelRateSupported = false
+    private var odometerSupported = false
+    private var odometerKm: Double? = null
     private var timeout: Runnable? = null
     private var connectedDeviceName: String = ""
 
@@ -119,8 +123,12 @@ class ElmBleConnection(
 
     private fun startInit() {
         pending.clear()
-        pending.addAll(listOf("ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0", "0100"))
+        pending.addAll(listOf("ATZ", "ATE0", "ATL0", "ATS0", "ATH0", "ATSP0", "0100", "012F", "015E", "01A6"))
         ecuAnswered = false
+        fuelLevelSupported = false
+        fuelRateSupported = false
+        odometerSupported = false
+        odometerKm = null
         rx.setLength(0)
         sendNext()
     }
@@ -163,42 +171,48 @@ class ElmBleConnection(
         val cmd = current ?: return
         current = null
         val clean = reply.replace('\r', ' ').replace('\n', ' ').trim()
-        if (cmd == "0100") ecuAnswered = clean.replace(" ", "").contains("4100")
+        val compact = clean.replace(" ", "").uppercase()
+        when (cmd) {
+            "0100" -> ecuAnswered = compact.contains("4100")
+            "012F" -> fuelLevelSupported = compact.contains("412F")
+            "015E" -> fuelRateSupported = compact.contains("415E")
+            "01A6" -> {
+                val payload = compact.substringAfter("41A6", "").take(8)
+                if (payload.length == 8) {
+                    val raw = payload.toLongOrNull(16)
+                    if (raw != null) {
+                        odometerKm = raw / 10.0
+                        odometerSupported = true
+                    }
+                }
+            }
+        }
         sendNext()
     }
 
     private fun finishInit() {
         current = null
-        
-        // Automatically check and add vehicle profile on successful connection
-        checkAndAutoAddVehicle()
-
-        if (ecuAnswered) {
-            onState(ObdState.ECU_READY, "Adapter ready — the bike ECU answered a standard OBD-II request.")
-        } else {
+        if (!ecuAnswered) {
             onState(
                 ObdState.ADAPTER_READY,
-                "Adapter connected, but the bike ECU did not answer a standard OBD-II request (0100). " +
-                    "Live ECU data is not available for this bike/adapter."
+                "Bluetooth adapter connected, but the bike ECU did not answer OBD-II request 0100. " +
+                    "Odometer and fuel readings are unavailable. Use manual odometer/fuel entry or a bike-compatible diagnostic adapter."
             )
+            return
         }
-    }
 
-    private fun checkAndAutoAddVehicle() {
-        val database = db ?: return
-        try {
-            val existingVehicles = database.vehicles()
-            val matchFound = existingVehicles.any { it.name.contains(connectedDeviceName, ignoreCase = true) }
-            if (!matchFound && connectedDeviceName.isNotBlank()) {
-                database.addVehicle(
-                    name = connectedDeviceName,
-                    year = "2026",
-                    reg = "",
-                    variant = "BLE Connected",
-                    odo = "0" // Fixed from 'odometer' to 'odo'
-                )
-            }
-        } catch (_: Exception) {}
+        val findings = buildList {
+            add("ECU responded")
+            add(if (odometerSupported) "Odometer: ${String.format("%.1f", odometerKm)} km" else "Odometer PID 01A6: unsupported/no response")
+            add(if (fuelLevelSupported) "Fuel level PID 012F: supported" else "Fuel level PID 012F: unsupported/no response")
+            add(if (fuelRateSupported) "Fuel rate PID 015E: supported" else "Fuel rate PID 015E: unsupported/no response")
+        }
+        val anyLiveData = odometerSupported || fuelLevelSupported || fuelRateSupported
+        onState(
+            ObdState.ECU_READY,
+            if (anyLiveData) "${connectedDeviceName}: ${findings.joinToString(" • ")}. Unsupported values will not be fabricated."
+            else "${connectedDeviceName}: ECU responded, but no supported odometer/fuel PIDs were returned. Manual entry remains available."
+        )
     }
 
     // --------------------------------------------------------------- GATT callback

@@ -85,6 +85,28 @@ class MileageCalcTest {
         assertEquals(listOf(15.0, 7.0), day.map { it.value })
     }
 
+    @Test fun tripCountBucketsAreAvailableForDashboardCharts() {
+        val trips = listOf(
+            trip("2026-11-05 09:00", 10.0),
+            trip("2026-11-05 18:00", 5.0),
+            trip("2026-12-06 09:00", 7.0)
+        )
+        val month = MileageCalc.tripBuckets(trips, Period.MONTH)
+        assertEquals(listOf("2026-11", "2026-12"), month.map { it.label })
+        assertEquals(listOf(2.0, 1.0), month.map { it.value })
+    }
+
+    @Test fun invalidFuelRowsDoNotCorruptMileage() {
+        val list = MileageCalc.intervals(listOf(
+            fuel(1, "2026-11-01 08:00", 10.0, 1000.0, true),
+            fuel(2, "2026-11-05 08:00", Double.NaN, 1080.0, false),
+            fuel(3, "2026-11-10 08:00", 4.0, 1150.0, true)
+        ))
+        assertEquals(1, list.size)
+        assertEquals(150.0, list.single().km, 1e-9)
+        assertEquals(4.0, list.single().litres, 1e-9)
+    }
+
     @Test fun routeCodecRoundTripAndDownsample() {
         val pts = (0 until 1000).map { 13.0 + it * 0.0001 to 80.0 + it * 0.0001 }
         val decoded = RouteCodec.decode(RouteCodec.encode(pts, 400))

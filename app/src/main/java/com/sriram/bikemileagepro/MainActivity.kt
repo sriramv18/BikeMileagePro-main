@@ -99,6 +99,12 @@ class MainActivity : ComponentActivity() {
             ui.obdState = state
             ui.obdMessage = message
             if (state == ObdState.DISCONNECTED || state == ObdState.ERROR) ui.connectedName = ""
+            // Automatic ride mode requires BOTH GPS and a live OBD Bluetooth connection.
+            if (state == ObdState.ADAPTER_READY || state == ObdState.ECU_READY) {
+                maybeAutoStartTrip()
+            } else if (state == ObdState.DISCONNECTED || state == ObdState.ERROR) {
+                stopTripForLostPrerequisite("Bluetooth OBD connection lost")
+            }
         }
         db.vehicles() // guarantees at least one vehicle exists
         // If the process died while a trip was running, convert it to PAUSED so it can be resumed or saved.
@@ -113,6 +119,28 @@ class MainActivity : ComponentActivity() {
             MileageTheme {
                 MileageApp(Env(ui, actions, db, this@MainActivity, bump = { ui.dataVersion++ }))
             }
+        }
+    }
+
+    // ---------------------------------------------------------------- automatic ride lifecycle
+
+    /** Start only when GPS is enabled and the BLE adapter has completed its connection setup. */
+    private fun maybeAutoStartTrip() {
+        refreshLocationState()
+        if (!ui.hasLocationPermission || !ui.locationEnabled) return
+        if (ui.obdState != ObdState.ADAPTER_READY && ui.obdState != ObdState.ECU_READY) return
+        val vehicleId = actions.savedVehicleId().takeIf { it >= 0L } ?: db.vehicles().firstOrNull()?.id ?: -1L
+        if (vehicleId < 0L || store.load().state != TripState.IDLE) return
+        appPrefs.edit().putLong("selected_vehicle", vehicleId).apply()
+        sendServiceAction(RideTrackingService.ACTION_START, true, vehicleId)
+        Toast.makeText(this, "Auto trip started: GPS and Bluetooth connected", Toast.LENGTH_SHORT).show()
+    }
+
+    /** A lost prerequisite ends and saves the active trip exactly once. */
+    private fun stopTripForLostPrerequisite(reason: String) {
+        if (store.load().state != TripState.IDLE) {
+            sendServiceAction(RideTrackingService.ACTION_STOP, false)
+            Toast.makeText(this, "Trip automatically stopped: $reason", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -322,6 +350,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
         else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
         refreshLocationState()
+        maybeAutoStartTrip()
         // First time the app is opened with permission but location switched off: ask to turn it on.
         if (ui.hasLocationPermission && !ui.locationEnabled && !promptedOnce) {
             promptedOnce = true

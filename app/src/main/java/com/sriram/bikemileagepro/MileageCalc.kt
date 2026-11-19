@@ -22,17 +22,8 @@ enum class Period(val label: String) { DAY("Day"), MONTH("Month"), YEAR("Year") 
 enum class ChartDisplay(val label: String) { BAR("Bar"), LINE("Line") }
 
 enum class ChartMetric(val label: String, val unit: String) {
-    MILEAGE("Mileage", "km/L"), DISTANCE("Distance", "km"), SPEND("Fuel spend", "₹"), TRIPS("Trips", "count")
+    MILEAGE("Mileage", "km/L"), DISTANCE("Distance", "km"), SPEND("Fuel spend", "₹"), TRIPS("Trips", "rides")
 }
-
-data class DailyActivitySummary(
-    val date: String,
-    val distanceKm: Double,
-    val mileageKmPerL: Double?,
-    val fuelSpend: Double,
-    val tripsStarted: Int,
-    val tripsEnded: Int
-)
 
 /** source is "Actual", "Interval est." or "Average est." */
 data class TripMileage(val kmPerL: Double, val source: String)
@@ -46,16 +37,20 @@ object MileageCalc {
      * between are added to the litres).
      */
     fun intervals(fuels: List<FuelRecord>): List<FuelInterval> {
-        val sorted = fuels.sortedWith(compareBy({ it.odometerKm }, { it.id }))
+        // Sort by odometer, not entry date: riders may enter an old receipt later.
+        // Ignore corrupt rows rather than allowing NaN/negative values into dashboard totals.
+        val sorted = fuels.filter {
+            it.odometerKm.isFinite() && it.odometerKm >= 0.0 &&
+                it.litres.isFinite() && it.litres > 0.0
+        }.sortedWith(compareBy<FuelRecord>({ it.odometerKm }, { it.id }))
         val out = mutableListOf<FuelInterval>()
         var prevFull = -1
         for (i in sorted.indices) {
             if (!sorted[i].fullTank) continue
             if (prevFull >= 0) {
                 val km = sorted[i].odometerKm - sorted[prevFull].odometerKm
-                var litres = 0.0
-                for (j in (prevFull + 1)..i) litres += sorted[j].litres
-                if (km > 0.0 && litres > 0.0) {
+                val litres = (prevFull + 1..i).sumOf { sorted[it].litres }
+                if (km > 0.0 && litres > 0.0 && litres.isFinite()) {
                     out += FuelInterval(sorted[i].id, sorted[prevFull].date, sorted[i].date, km, litres)
                 }
             }
@@ -125,9 +120,10 @@ object MileageCalc {
         }
 
     fun tripBuckets(trips: List<TripRecord>, period: Period): List<ChartBucket> =
-        trips.groupBy { key(it.date, period) }.toSortedMap().map { (k, v) ->
-            ChartBucket(label(k, period), v.size.toDouble())
-        }
+        trips.filter { it.distanceKm.isFinite() && it.distanceKm >= 0.0 }
+            .groupBy { key(it.date, period) }.toSortedMap().map { (k, v) ->
+                ChartBucket(label(k, period), v.size.toDouble())
+            }
 
     /** Daily figures use trip start date for distance and calculate completion date from duration. */
     fun dailySummary(
